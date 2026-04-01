@@ -50,6 +50,10 @@ final class PromptPanelController {
             newPanel.onSubmit = { [weak self] text in
                 self?.handleSubmit(text)
             }
+            newPanel.onTextChanged = { [weak newPanel] text in
+                let state: MascotState = text.isEmpty ? .idle : .typing
+                newPanel?.mascot.setState(state)
+            }
             panel = newPanel
         }
 
@@ -57,12 +61,20 @@ final class PromptPanelController {
     }
 
     private func handleSubmit(_ text: String) {
+        // Set mascot to waiting state
+        panel?.mascot.setState(.waiting)
+
         // Placeholder response — will be replaced with AI backend.
         let lines = (1 ... 30).map { "Line \($0): Response to \"\(text)\"" }
         let response = "You asked: \"\(text)\"\n\n"
             + lines.joined(separator: "\n")
             + "\n\nEnd of response. Scroll up to see more."
-        panel?.showResponse(response)
+
+        // Simulate a brief wait, then show response
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.panel?.mascot.setState(.responding)
+            self?.panel?.showResponse(response)
+        }
     }
 
     // MARK: - Carbon Hot Key

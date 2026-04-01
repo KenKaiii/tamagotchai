@@ -8,20 +8,38 @@
 
 /* Begin PBXBuildFile section */
 		099956513258275C888D9C17 /* PromptPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D449322E10E6BB23C918E50 /* PromptPanelController.swift */; };
+		58A6EC99AA0D4939ED8985C9 /* avatar_pack.riv in Resources */ = {isa = PBXBuildFile; fileRef = 46B666BC978765216D62FF84 /* avatar_pack.riv */; };
+		705BF951EDBA3B84995D11FD /* RiveRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 79428049BDEB372B1D6B128C /* RiveRuntime */; };
 		82E2D035D7EFA0B8535A6E41 /* TamagotchaiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B2FBCA59725E0DD164913B /* TamagotchaiApp.swift */; };
 		9083FBEDFC3FECC68503375C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE7C40F97BE3426E3660AB3 /* ContentView.swift */; };
 		92232CF2F234B831875BD6C1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A4DB345D78D7E1CC279B8F49 /* Assets.xcassets */; };
+		AFB8A474EC6602B09505E1F1 /* MascotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B74160BBE6B75D3AA754C2 /* MascotView.swift */; };
+		C10EA6F9E96084609564E571 /* MascotState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3CD99D66F6E1E5354B61F26 /* MascotState.swift */; };
 		DDC23F57DB0A9623506D08E3 /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24EF6276BE226C9B7F8E56F /* FloatingPanel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		36B2FBCA59725E0DD164913B /* TamagotchaiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TamagotchaiApp.swift; sourceTree = "<group>"; };
+		46B666BC978765216D62FF84 /* avatar_pack.riv */ = {isa = PBXFileReference; path = avatar_pack.riv; sourceTree = "<group>"; };
+		52B74160BBE6B75D3AA754C2 /* MascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotView.swift; sourceTree = "<group>"; };
 		6D449322E10E6BB23C918E50 /* PromptPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPanelController.swift; sourceTree = "<group>"; };
 		76F26E815173BCF54B26DCB9 /* Tamagotchai.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tamagotchai.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8FE7C40F97BE3426E3660AB3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A3CD99D66F6E1E5354B61F26 /* MascotState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotState.swift; sourceTree = "<group>"; };
 		A4DB345D78D7E1CC279B8F49 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D24EF6276BE226C9B7F8E56F /* FloatingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPanel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E43E0F6898C902E4252EF881 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				705BF951EDBA3B84995D11FD /* RiveRuntime in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		8077CA5E556903A0D0571113 /* Sources */ = {
@@ -29,6 +47,7 @@
 			children = (
 				8FE7C40F97BE3426E3660AB3 /* ContentView.swift */,
 				36B2FBCA59725E0DD164913B /* TamagotchaiApp.swift */,
+				E4175355A2B14F833EE08D6B /* Mascot */,
 				E3D5EED0D16B15ECCB8E4EDF /* PromptPanel */,
 			);
 			name = Sources;
@@ -46,6 +65,7 @@
 		9E19C2D827E0612A1438B90A = {
 			isa = PBXGroup;
 			children = (
+				E53591F237780859E7315015 /* Resources */,
 				8077CA5E556903A0D0571113 /* Sources */,
 				92DEE8BA3E6272FAE98B38C0 /* tamagotchai */,
 				CA376747D3CF061F081AFB18 /* Products */,
@@ -69,6 +89,24 @@
 			path = PromptPanel;
 			sourceTree = "<group>";
 		};
+		E4175355A2B14F833EE08D6B /* Mascot */ = {
+			isa = PBXGroup;
+			children = (
+				A3CD99D66F6E1E5354B61F26 /* MascotState.swift */,
+				52B74160BBE6B75D3AA754C2 /* MascotView.swift */,
+			);
+			path = Mascot;
+			sourceTree = "<group>";
+		};
+		E53591F237780859E7315015 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				46B666BC978765216D62FF84 /* avatar_pack.riv */,
+			);
+			name = Resources;
+			path = tamagotchai/Resources;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -80,6 +118,7 @@
 				89C6A061E6CFD4AF84FED1F3 /* SwiftFormat Check */,
 				623FEC90369B6278158AE4F9 /* Sources */,
 				8832604038B38192CF7CFDE6 /* Resources */,
+				E43E0F6898C902E4252EF881 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -87,6 +126,7 @@
 			);
 			name = Tamagotchai;
 			packageProductDependencies = (
+				79428049BDEB372B1D6B128C /* RiveRuntime */,
 			);
 			productName = Tamagotchai;
 			productReference = 76F26E815173BCF54B26DCB9 /* Tamagotchai.app */;
@@ -111,6 +151,9 @@
 			);
 			mainGroup = 9E19C2D827E0612A1438B90A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7BA8563EBA26BBBAC9614799 /* XCRemoteSwiftPackageReference "rive-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -126,6 +169,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				92232CF2F234B831875BD6C1 /* Assets.xcassets in Resources */,
+				58A6EC99AA0D4939ED8985C9 /* avatar_pack.riv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +223,8 @@
 			files = (
 				9083FBEDFC3FECC68503375C /* ContentView.swift in Sources */,
 				DDC23F57DB0A9623506D08E3 /* FloatingPanel.swift in Sources */,
+				C10EA6F9E96084609564E571 /* MascotState.swift in Sources */,
+				AFB8A474EC6602B09505E1F1 /* MascotView.swift in Sources */,
 				099956513258275C888D9C17 /* PromptPanelController.swift in Sources */,
 				82E2D035D7EFA0B8535A6E41 /* TamagotchaiApp.swift in Sources */,
 			);
@@ -366,6 +412,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7BA8563EBA26BBBAC9614799 /* XCRemoteSwiftPackageReference "rive-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rive-app/rive-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.6.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		79428049BDEB372B1D6B128C /* RiveRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7BA8563EBA26BBBAC9614799 /* XCRemoteSwiftPackageReference "rive-ios" */;
+			productName = RiveRuntime;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E183895BFF8CFB6B431FF21D /* Project object */;
 }

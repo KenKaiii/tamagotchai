@@ -13,7 +13,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     private let panelWidth: CGFloat = 680
 
     /// The input bar height.
-    private let inputHeight: CGFloat = 54
+    private let inputHeight: CGFloat = 58
 
     /// Max height for the response area.
     private let responseMaxHeight: CGFloat = 400
@@ -30,13 +30,19 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Called when the user presses Return in the text field.
     var onSubmit: ((String) -> Void)?
 
+    /// Called when the user types in the input field.
+    var onTextChanged: ((String) -> Void)?
+
     // MARK: - UI Components
 
+    /// The animated mascot inline in the input row.
+    let mascot = MascotView()
+
     private lazy var inputField: NSTextField = {
-        let field = NSTextField()
+        let field = WhiteCursorTextField()
         field.delegate = self
         field.placeholderString = "Ask anything…"
-        field.font = .systemFont(ofSize: 22, weight: .regular)
+        field.font = .systemFont(ofSize: 26, weight: .light)
         field.textColor = .labelColor
         field.drawsBackground = false
         field.isBordered = false
@@ -50,33 +56,45 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         return field
     }()
 
-    private lazy var iconView: NSImageView = {
-        let config = NSImage.SymbolConfiguration(pointSize: 20, weight: .medium)
-        let image = NSImage(
-            systemSymbolName: "sparkles",
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(config)
-        let view = NSImageView(image: image ?? NSImage())
-        view.contentTintColor = .secondaryLabelColor
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.setContentHuggingPriority(.required, for: .horizontal)
-        return view
+    /// Invisible spacer that reserves space for the mascot child window.
+    private lazy var mascotSpacer: NSView = {
+        let v = NSView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            v.widthAnchor.constraint(equalToConstant: 40),
+            v.heightAnchor.constraint(equalToConstant: 40),
+        ])
+        v.setContentHuggingPriority(.required, for: .horizontal)
+        return v
     }()
 
     private lazy var inputRow: NSStackView = {
-        let stack = NSStackView(views: [iconView, inputField])
+        let stack = NSStackView(views: [mascotSpacer, inputField])
         stack.orientation = .horizontal
-        stack.spacing = 12
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 20, bottom: 14, right: 20)
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 9, left: 12, bottom: 9, right: 24)
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.heightAnchor.constraint(equalToConstant: inputHeight).isActive = true
         return stack
     }()
 
-    private lazy var divider: NSBox = {
-        let box = NSBox()
-        box.boxType = .separator
-        box.translatesAutoresizingMaskIntoConstraints = false
-        return box
+    private lazy var dividerContainer: NSView = {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(line)
+
+        NSLayoutConstraint.activate([
+            line.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            line.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            line.topAnchor.constraint(equalTo: container.topAnchor),
+            line.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        return container
     }()
 
     /// The response text view — read-only, selectable, scrollable.
@@ -89,7 +107,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         textView.textColor = .labelColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 16, height: 12)
+        textView.textContainerInset = NSSize(width: 20, height: 14)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
@@ -113,7 +131,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     }()
 
     private lazy var mainStack: NSStackView = {
-        let stack = NSStackView()
+        let stack = FlippedStackView()
         stack.orientation = .vertical
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -121,13 +139,16 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         return stack
     }()
 
+    /// Corner radius matching Spotlight's pill shape.
+    private let cornerRadius: CGFloat = 28
+
     private lazy var backgroundView: NSVisualEffectView = {
         let effect = NSVisualEffectView()
         effect.material = .hudWindow
         effect.state = .active
         effect.blendingMode = .behindWindow
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 12
+        effect.layer?.cornerRadius = cornerRadius
         effect.layer?.masksToBounds = true
         effect.translatesAutoresizingMaskIntoConstraints = false
         return effect
@@ -186,10 +207,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         ])
 
         // Add divider + response to stack once, keep them hidden
-        mainStack.addArrangedSubview(divider)
+        mainStack.addArrangedSubview(dividerContainer)
         mainStack.addArrangedSubview(responseScrollView)
 
-        divider.isHidden = true
+        dividerContainer.isHidden = true
         responseScrollView.isHidden = true
 
         let heightConstraint = responseScrollView.heightAnchor.constraint(
@@ -239,8 +260,6 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Shows the response area below the input with the given text.
     func showResponse(_ text: String) {
         responseTextView.string = text
-        divider.isHidden = false
-        responseScrollView.isHidden = false
 
         // Calculate the natural text height
         responseTextView.layoutManager?.ensureLayout(
@@ -257,9 +276,25 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         // Clamp to max height
         let targetHeight = min(totalTextHeight, responseMaxHeight)
 
-        // Animate the panel growing downward
-        responseHeightConstraint?.constant = targetHeight
-        let newPanelHeight = inputHeight + 1 + targetHeight // 1 for divider
+        // Set target height and unhide — but start with zero height for animation
+        responseHeightConstraint?.constant = 0
+        dividerContainer.isHidden = false
+        responseScrollView.isHidden = false
+        dividerContainer.alphaValue = 1
+        responseScrollView.alphaValue = 1
+
+        // Set the initial frame to include divider space only
+        let initialPanelHeight = inputHeight + 1
+        let initialFrame = NSRect(
+            x: frame.origin.x,
+            y: topY - initialPanelHeight,
+            width: panelWidth,
+            height: initialPanelHeight
+        )
+        setFrame(initialFrame, display: true)
+
+        // Now animate the response area growing downward
+        let newPanelHeight = inputHeight + 1 + targetHeight
         let newOriginY = topY - newPanelHeight
         let newFrame = NSRect(
             x: frame.origin.x,
@@ -270,14 +305,24 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
+            self.responseHeightConstraint?.animator().constant = targetHeight
             self.animator().setFrame(newFrame, display: true)
+        } completionHandler: { [weak self] in
+            self?.positionMascotOverSpacer()
         }
 
-        // Scroll to top
         responseTextView.scrollToBeginningOfDocument(nil)
+        positionMascotOverSpacer()
         invalidateShadow()
+    }
+
+    // MARK: - Text change tracking
+
+    func controlTextDidChange(_: Notification) {
+        let text = inputField.stringValue
+        onTextChanged?(text)
     }
 
     // MARK: - Presentation
@@ -288,9 +333,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         // Reset state
         inputField.stringValue = ""
         responseTextView.string = ""
-        divider.isHidden = true
+        dividerContainer.isHidden = true
         responseScrollView.isHidden = true
         responseHeightConstraint?.constant = 0
+        mascot.setState(.idle)
 
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let screenFrame = screen.visibleFrame
@@ -311,11 +357,24 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         NSApp.activate(ignoringOtherApps: true)
         makeFirstResponder(inputField)
 
+        // Position mascot child window over the spacer
+        mascot.window.alphaValue = 0
+        addChildWindow(mascot.window, ordered: .above)
+        positionMascotOverSpacer()
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.animator().alphaValue = 1
+            self.mascot.window.animator().alphaValue = 1
         }
+    }
+
+    /// Positions the mascot child window directly over the spacer view.
+    private func positionMascotOverSpacer() {
+        let spacerInWindow = mascotSpacer.convert(mascotSpacer.bounds, to: nil)
+        let spacerOnScreen = convertToScreen(spacerInWindow)
+        mascot.window.setFrameOrigin(spacerOnScreen.origin)
     }
 
     func dismiss() {
@@ -326,12 +385,36 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             context.duration = 0.12
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             self.animator().alphaValue = 0
+            self.mascot.window.animator().alphaValue = 0
         } completionHandler: { [weak self] in
             guard let self else { return }
             DispatchQueue.main.async {
+                self.removeChildWindow(self.mascot.window)
+                self.mascot.window.orderOut(nil)
                 self.orderOut(nil)
                 self.isDismissing = false
             }
         }
+    }
+}
+
+// MARK: - Flipped stack view
+
+/// NSStackView subclass with flipped coordinates so arranged subviews
+/// stack top-to-bottom (first = top) instead of the default bottom-to-top.
+private final class FlippedStackView: NSStackView {
+    override var isFlipped: Bool { true }
+}
+
+// MARK: - White cursor text field
+
+/// NSTextField subclass that sets the insertion point (cursor) color to white.
+private final class WhiteCursorTextField: NSTextField {
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if let fieldEditor = currentEditor() as? NSTextView {
+            fieldEditor.insertionPointColor = .white
+        }
+        return result
     }
 }

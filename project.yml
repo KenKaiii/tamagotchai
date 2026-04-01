@@ -11,6 +11,11 @@ settings:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 
+packages:
+  RiveRuntime:
+    url: https://github.com/rive-app/rive-ios
+    from: "6.6.2"
+
 targets:
   Tamagotchai:
     type: application
@@ -18,6 +23,8 @@ targets:
     sources:
       - path: tamagotchai/Sources
       - path: tamagotchai/Assets.xcassets
+      - path: tamagotchai/Resources
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tamagotchai
@@ -27,6 +34,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
+    dependencies:
+      - package: RiveRuntime
     entitlements:
       path: tamagotchai/Entitlements/Tamagotchai.entitlements
     preBuildScripts:

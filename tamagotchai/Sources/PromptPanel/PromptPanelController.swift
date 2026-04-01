@@ -1,10 +1,12 @@
 import AppKit
 import Carbon.HIToolbox
+import os
 
 /// Manages the floating prompt panel lifecycle and global hotkey registration.
 @MainActor
 final class PromptPanelController {
     static let shared = PromptPanelController()
+    private let logger = Logger(subsystem: "com.unstablemind.tamagotchai", category: "hotkey")
 
     private var panel: FloatingPanel?
     private var hotKeyRef: EventHotKeyRef?
@@ -115,7 +117,7 @@ final class PromptPanelController {
         )
 
         guard handlerResult == noErr else {
-            NSLog("[Tamagotchai] Failed to install hotkey handler")
+            logger.error("Failed to install hotkey handler")
             return
         }
 
@@ -129,7 +131,7 @@ final class PromptPanelController {
         )
 
         if registerResult != noErr {
-            NSLog("[Tamagotchai] Failed to register hotkey")
+            logger.error("Failed to register hotkey")
         }
     }
 

@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.unstablemind
   deploymentTarget:
     macOS: "14.0"
-  xcodeVersion: "16.1"
+  xcodeVersion: "26.1"
   generateEmptyDirectories: true
 
 settings:
@@ -14,7 +14,7 @@ settings:
 packages:
   RiveRuntime:
     url: https://github.com/rive-app/rive-ios
-    from: "6.6.2"
+    from: "6.18.0"
 
 targets:
   Tamagotchai:

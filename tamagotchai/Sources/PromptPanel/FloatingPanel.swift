@@ -362,7 +362,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
         alphaValue = 0
         makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         makeFirstResponder(inputField)
 
         // Position mascot child window over the spacer

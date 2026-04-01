@@ -139,7 +139,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1610;
+				LastUpgradeCheck = 2610;
 			};
 			buildConfigurationList = 85641E0CF2CB11577D3DFEB9 /* Build configuration list for PBXProject "Tamagotchai" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -419,7 +419,7 @@
 			repositoryURL = "https://github.com/rive-app/rive-ios";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 6.6.2;
+				minimumVersion = 6.18.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

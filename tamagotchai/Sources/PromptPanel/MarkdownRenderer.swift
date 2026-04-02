@@ -1,15 +1,32 @@
 import AppKit
 import Foundation
+import Highlightr
+
+/// Custom attribute keys for code block rendering.
+extension NSAttributedString.Key {
+    static let codeBlockContent = NSAttributedString.Key("codeBlockContent")
+    static let codeBlockLanguage = NSAttributedString.Key("codeBlockLanguage")
+}
 
 /// Renders markdown text to NSAttributedString with styling suited for a dark HUD panel.
 @MainActor
 enum MarkdownRenderer {
+    // MARK: - Syntax Highlighting
+
+    private static let highlightr: Highlightr? = {
+        let h = Highlightr()
+        h?.setTheme(to: "atom-one-dark")
+        return h
+    }()
+
     // MARK: - Fonts
 
     private static let bodyFont = NSFont.systemFont(ofSize: 18, weight: .regular)
     private static let boldFont = NSFont.systemFont(ofSize: 18, weight: .semibold)
-    private static let codeFont = NSFont.monospacedSystemFont(ofSize: 16, weight: .regular)
-    private static let codeBoldFont = NSFont.monospacedSystemFont(ofSize: 16, weight: .semibold)
+    private static let codeFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+    private static let codeBoldFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .semibold)
+    private static let tableFont = NSFont.systemFont(ofSize: 14, weight: .regular)
+    private static let tableBoldFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
 
     private static func headingFont(level: Int) -> NSFont {
         switch level {
@@ -43,6 +60,9 @@ enum MarkdownRenderer {
         let result = NSMutableAttributedString()
         let lines = markdown.components(separatedBy: "\n")
         var idx = 0
+        /// Tracks whether the previous block was a blank line so we
+        /// don't stack extra paragraph spacing on top of explicit gaps.
+        var prevWasBlank = false
 
         while idx < lines.count {
             let line = lines[idx]
@@ -63,14 +83,14 @@ enum MarkdownRenderer {
                     idx += 1
                 }
                 appendCodeBlock(to: result, content: codeLines.joined(separator: "\n"), language: lang)
+                prevWasBlank = false
                 continue
             }
 
-            // Empty line
+            // Empty line — skip consecutive blanks; a single blank is
+            // represented implicitly via paragraphSpacing on the surrounding blocks.
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
-                if result.length > 0 {
-                    result.append(plain("\n", font: bodyFont))
-                }
+                prevWasBlank = true
                 idx += 1
                 continue
             }
@@ -80,6 +100,7 @@ enum MarkdownRenderer {
                 let hashes = line[headingMatch].count(where: { $0 == "#" })
                 let text = String(line[headingMatch.upperBound...])
                 appendHeading(to: result, text: text, level: hashes)
+                prevWasBlank = false
                 idx += 1
                 continue
             }
@@ -87,6 +108,7 @@ enum MarkdownRenderer {
             // Horizontal rule: ---, ***, ___, or with spaces
             if isHorizontalRule(line) {
                 appendHorizontalRule(to: result)
+                prevWasBlank = false
                 idx += 1
                 continue
             }
@@ -102,6 +124,7 @@ enum MarkdownRenderer {
                     idx += 1
                 }
                 appendTable(to: result, lines: tableLines)
+                prevWasBlank = false
                 continue
             }
 
@@ -113,6 +136,7 @@ enum MarkdownRenderer {
                     idx += 1
                 }
                 appendBlockquote(to: result, lines: quoteLines)
+                prevWasBlank = false
                 continue
             }
 
@@ -124,6 +148,7 @@ enum MarkdownRenderer {
                     idx += 1
                 }
                 appendListBlock(to: result, lines: listLines)
+                prevWasBlank = false
                 continue
             }
 
@@ -135,12 +160,26 @@ enum MarkdownRenderer {
                     idx += 1
                 }
                 appendListBlock(to: result, lines: listLines)
+                prevWasBlank = false
                 continue
             }
 
             // Regular paragraph
             appendParagraph(to: result, text: line)
+            prevWasBlank = false
             idx += 1
+        }
+
+        // Strip trailing newlines down to exactly one so the last paragraph
+        // is properly terminated (preventing attribute leakage when content is
+        // appended after the rendered output) without leaving empty visual space.
+        while result.length > 1,
+              result.attributedSubstring(from: NSRange(location: result.length - 1, length: 1))
+              .string == "\n",
+              result.attributedSubstring(from: NSRange(location: result.length - 2, length: 1))
+              .string == "\n"
+        {
+            result.deleteCharacters(in: NSRange(location: result.length - 1, length: 1))
         }
 
         return result
@@ -178,8 +217,8 @@ enum MarkdownRenderer {
         level: Int
     ) {
         let style = NSMutableParagraphStyle()
-        style.paragraphSpacingBefore = level <= 2 ? 12 : 8
-        style.paragraphSpacing = 6
+        style.paragraphSpacingBefore = result.length > 0 ? (level <= 2 ? 12 : 8) : 0
+        style.paragraphSpacing = 4
         style.lineSpacing = 2
 
         let font = headingFont(level: level)
@@ -189,7 +228,7 @@ enum MarkdownRenderer {
             range: NSRange(location: 0, length: inline.length)
         )
         result.append(inline)
-        result.append(plain("\n", font: bodyFont))
+        result.append(plain("\n", font: font))
     }
 
     // MARK: - Paragraphs
@@ -200,7 +239,8 @@ enum MarkdownRenderer {
     ) {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 3
-        style.paragraphSpacing = 8
+        style.paragraphSpacingBefore = result.length > 0 ? 8 : 0
+        style.paragraphSpacing = 0
 
         let inline = renderInline(text, baseFont: bodyFont)
         inline.addAttributes(
@@ -217,7 +257,7 @@ enum MarkdownRenderer {
         to result: NSMutableAttributedString,
         lines: [String]
     ) {
-        for line in lines {
+        for (lineIdx, line) in lines.enumerated() {
             let indent = line.prefix(while: { $0 == " " }).count
             let nestLevel = indent / 2
             let trimmed = String(line.dropFirst(indent))
@@ -244,21 +284,12 @@ enum MarkdownRenderer {
                 content = String(trimmed[match.upperBound...])
             }
 
-            let bulletIndent = CGFloat(8 + nestLevel * 20)
-            let textIndent: CGFloat = bulletIndent + 16
-
-            let style = NSMutableParagraphStyle()
-            style.lineSpacing = 3
-            style.paragraphSpacing = 3
-            style.firstLineHeadIndent = bulletIndent
-            style.headIndent = textIndent
-            style.tabStops = [NSTextTab(textAlignment: .left, location: textIndent)]
-
-            // Determine bullet character
+            // Determine bullet/number string
             let bullet: String
+            let isOrdered = isOrderedListItem(trimmed)
             if isTask {
                 bullet = taskChecked ? "☑" : "☐"
-            } else if isOrderedListItem(trimmed) {
+            } else if isOrdered {
                 let numStr = trimmed.prefix(while: { $0.isNumber || $0 == "." })
                 bullet = String(numStr)
             } else {
@@ -266,11 +297,35 @@ enum MarkdownRenderer {
                 bullet = bullets[min(nestLevel, bullets.count - 1)]
             }
 
+            // Measure bullet width for tab alignment (Markdownosaur approach)
+            let bulletFont = isOrdered
+                ? NSFont.monospacedDigitSystemFont(ofSize: bodyFont.pointSize, weight: .regular)
+                : bodyFont
+            let bulletWidth = ceil(
+                NSAttributedString(string: bullet, attributes: [.font: bulletFont]).size().width
+            )
+
+            let baseLeftMargin: CGFloat = 8
+            let leftMarginOffset = baseLeftMargin + (20.0 * CGFloat(nestLevel))
+            let spacingFromBullet: CGFloat = 8
+            let firstTabLocation = leftMarginOffset + bulletWidth
+            let secondTabLocation = firstTabLocation + spacingFromBullet
+
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = 3
+            style.paragraphSpacing = 2
+            style.paragraphSpacingBefore = lineIdx == 0 && result.length > 0 ? 6 : 0
+            style.tabStops = [
+                NSTextTab(textAlignment: .right, location: firstTabLocation),
+                NSTextTab(textAlignment: .left, location: secondTabLocation),
+            ]
+            style.headIndent = secondTabLocation
+
             let bulletColor = isTask ? (taskChecked ? checkboxColor : dimTextColor) : bulletColor
             let prefix = NSAttributedString(
-                string: "\(bullet)\t",
+                string: "\t\(bullet)\t",
                 attributes: [
-                    .font: bodyFont,
+                    .font: bulletFont,
                     .foregroundColor: bulletColor,
                     .paragraphStyle: style,
                 ]
@@ -299,43 +354,126 @@ enum MarkdownRenderer {
 
     // MARK: - Code Blocks
 
+    private static let lineNumFont = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
+    private static let lineNumColor = NSColor.white.withAlphaComponent(0.85)
+
     private static func appendCodeBlock(
         to result: NSMutableAttributedString,
         content: String,
         language: String
     ) {
-        let style = NSMutableParagraphStyle()
-        style.lineSpacing = 2
-        style.paragraphSpacingBefore = 6
-        style.paragraphSpacing = 6
-        style.headIndent = 12
-        style.tailIndent = -12
-        style.firstLineHeadIndent = 12
+        // Tab stops: right-aligned number gutter at 26px, code starts at 34px
+        let numberTabStop = NSTextTab(textAlignment: .right, location: 26)
+        let codeTabStop = NSTextTab(textAlignment: .left, location: 34)
 
-        // Language label
-        if !language.isEmpty {
-            let langLabel = NSAttributedString(
-                string: "  \(language)\n",
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                    .foregroundColor: NSColor(white: 0.5, alpha: 1),
-                    .backgroundColor: codeBlockBg,
-                ]
+        // Try syntax highlighting via Highlightr, fall back to plain mono text
+        let highlighted: NSAttributedString
+        let lang = language.isEmpty ? nil : language
+        if let h = highlightr?.highlight(content, as: lang) {
+            let m = NSMutableAttributedString(attributedString: h)
+            m.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: m.length))
+            m.addAttribute(.font, value: codeFont, range: NSRange(location: 0, length: m.length))
+            highlighted = m
+        } else {
+            highlighted = NSAttributedString(
+                string: content,
+                attributes: [.font: codeFont, .foregroundColor: codeTextColor]
             )
-            result.append(langLabel)
         }
 
-        let code = NSMutableAttributedString(
-            string: content,
-            attributes: [
-                .font: codeFont,
-                .foregroundColor: codeTextColor,
-                .backgroundColor: codeBlockBg,
-                .paragraphStyle: style,
-            ]
+        // Split highlighted attributed string by \n boundaries
+        let highlightedStr = highlighted.string as NSString
+        var lineRanges: [NSRange] = []
+        var searchStart = 0
+        while searchStart <= highlightedStr.length {
+            let nlRange = highlightedStr.range(
+                of: "\n",
+                range: NSRange(location: searchStart, length: highlightedStr.length - searchStart)
+            )
+            if nlRange.location != NSNotFound {
+                lineRanges.append(NSRange(location: searchStart, length: nlRange.location - searchStart))
+                searchStart = nlRange.location + 1
+            } else {
+                lineRanges.append(NSRange(location: searchStart, length: highlightedStr.length - searchStart))
+                break
+            }
+        }
+
+        let code = NSMutableAttributedString()
+        let lineCount = lineRanges.count
+
+        for (i, range) in lineRanges.enumerated() {
+            // Build paragraph style for this line
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = 2
+            style.tabStops = [numberTabStop, codeTabStop]
+            style.headIndent = 34
+            style.tailIndent = -12
+
+            if i == 0 {
+                style.paragraphSpacingBefore = 38 // room for header drawn in draw()
+            } else {
+                style.paragraphSpacingBefore = 0
+            }
+
+            if i == lineCount - 1 {
+                style.paragraphSpacing = 14 // spacing after block
+            } else {
+                style.paragraphSpacing = 0
+            }
+
+            // Line number prefix: \t<num>\t
+            let lineNumStr = NSAttributedString(
+                string: "\t\(i + 1)\t",
+                attributes: [
+                    .font: lineNumFont,
+                    .foregroundColor: lineNumColor,
+                    .paragraphStyle: style,
+                ]
+            )
+            code.append(lineNumStr)
+
+            // Append the highlighted code for this line
+            let lineContent = highlighted.attributedSubstring(from: range)
+            let mutableLine = NSMutableAttributedString(attributedString: lineContent)
+            mutableLine.addAttribute(
+                .paragraphStyle, value: style,
+                range: NSRange(location: 0, length: mutableLine.length)
+            )
+            code.append(mutableLine)
+
+            if i < lineCount - 1 {
+                code.append(NSAttributedString(
+                    string: "\n",
+                    attributes: [.font: codeFont, .paragraphStyle: style]
+                ))
+            }
+        }
+
+        // Apply custom attributes for ResponseTextView to detect code blocks
+        let fullRange = NSRange(location: 0, length: code.length)
+        code.addAttributes(
+            [
+                .codeBlockContent: content,
+                .codeBlockLanguage: language,
+            ],
+            range: fullRange
         )
+
         result.append(code)
-        result.append(plain("\n\n", font: bodyFont))
+
+        // Trailing newline with reset paragraph style to prevent leaking
+        let resetStyle = NSMutableParagraphStyle()
+        resetStyle.paragraphSpacingBefore = 0
+        resetStyle.paragraphSpacing = 0
+        result.append(NSAttributedString(
+            string: "\n",
+            attributes: [
+                .font: bodyFont,
+                .foregroundColor: textColor,
+                .paragraphStyle: resetStyle,
+            ]
+        ))
     }
 
     // MARK: - Blockquotes
@@ -481,7 +619,7 @@ enum MarkdownRenderer {
                 }
 
                 // Render cell content
-                let font = isHeader ? boldFont : bodyFont
+                let font = isHeader ? tableBoldFont : tableFont
                 let inline = renderInline(cellText, baseFont: font)
                 inline.addAttributes(
                     [.paragraphStyle: paraStyle],
@@ -505,7 +643,7 @@ enum MarkdownRenderer {
         }
 
         // Add spacing after the table
-        result.append(plain("\n", font: bodyFont))
+        result.append(plain("\n", font: tableFont))
     }
 
     // MARK: - Horizontal Rule
@@ -595,12 +733,19 @@ extension MarkdownRenderer {
             else if let (linkText, url) = scanner.scanLink() {
                 // Strip optional title from URL: "url \"title\""
                 let cleanURL = url.components(separatedBy: " ").first ?? url
-                result.append(NSAttributedString(string: linkText, attributes: [
-                    .font: baseFont,
-                    .foregroundColor: linkColor,
-                    .underlineStyle: NSUnderlineStyle.single.rawValue,
-                    .link: cleanURL,
-                ]))
+                let linkAttrs = linkAttributes(baseFont: baseFont, url: cleanURL)
+                result.append(NSAttributedString(string: linkText, attributes: linkAttrs))
+            }
+            // Bare URL: https://... or http://...
+            else if let bareURL = scanner.scanBareURL() {
+                let linkAttrs = linkAttributes(baseFont: baseFont, url: bareURL)
+                // Insert zero-width spaces after / and - so the URL can word-wrap
+                let wrappable = bareURL
+                    .replacingOccurrences(of: "/", with: "/\u{200B}")
+                    .replacingOccurrences(of: "-", with: "-\u{200B}")
+                    .replacingOccurrences(of: "=", with: "=\u{200B}")
+                    .replacingOccurrences(of: "&", with: "&\u{200B}")
+                result.append(NSAttributedString(string: wrappable, attributes: linkAttrs))
             }
             // Image ![alt](url) — render as [🖼 alt]
             else if scanner.currentChar == "!", scanner.peekNext == "[" {
@@ -626,6 +771,17 @@ extension MarkdownRenderer {
         }
 
         return result
+    }
+
+    /// Builds the standard link attributes (clickable, blue, underlined).
+    private static func linkAttributes(baseFont: NSFont, url: String) -> [NSAttributedString.Key: Any] {
+        [
+            .font: baseFont,
+            .foregroundColor: linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .link: url,
+            .cursor: NSCursor.pointingHand,
+        ]
     }
 
     static func plain(_ str: String, font: NSFont) -> NSAttributedString {
@@ -724,6 +880,39 @@ private final class InlineScanner {
         let url = String(text[urlStart ..< urlEnd])
         position = urlEnd + 1
         return (linkText, url)
+    }
+
+    /// Try to scan a bare URL starting with http:// or https://.
+    func scanBareURL() -> String? {
+        // Check for http:// or https:// at current position
+        let remaining = String(text[position...])
+        let prefixes = ["https://", "http://"]
+        guard prefixes.contains(where: { remaining.hasPrefix($0) }) else { return nil }
+
+        // Consume characters valid in a URL until we hit whitespace, end, or trailing punctuation
+        let urlTerminators: Set<Character> = [" ", "\t", "\n", "\r", "<", ">", "\"", "'"]
+        var end = position
+        while end < text.count, !urlTerminators.contains(text[end]) {
+            end += 1
+        }
+
+        // Strip common trailing punctuation that's probably not part of the URL
+        let trailingPunctuation: Set<Character> = [".", ",", ";", ":", "!", "?", ")", "]"]
+        while end > position, trailingPunctuation.contains(text[end - 1]) {
+            // Keep ) if there's a matching ( in the URL (common in Wikipedia links)
+            if text[end - 1] == ")" {
+                let slice = text[position ..< end]
+                if slice.count(where: { $0 == "(" }) >= slice.count(where: { $0 == ")" }) {
+                    break
+                }
+            }
+            end -= 1
+        }
+
+        let url = String(text[position ..< end])
+        guard url.count > 8 else { return nil } // must have more than just the scheme
+        position = end
+        return url
     }
 
     /// Advance one character and return it.

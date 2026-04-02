@@ -12,6 +12,7 @@ private let panelLogger = Logger(
 /// - Floats above all windows
 /// - Dismisses when focus is lost or Escape is pressed
 /// - Grows downward from a fixed top edge when content expands
+// swiftlint:disable:next type_body_length
 final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -174,8 +175,8 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     }()
 
     /// The response text view — read-only, selectable, scrollable, rich-text for markdown.
-    private lazy var responseTextView: NSTextView = {
-        let textView = NSTextView()
+    private lazy var responseTextView: ResponseTextView = {
+        let textView = ResponseTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
@@ -189,8 +190,9 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.lineFragmentPadding = 4
+        textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.autoresizingMask = [.width]
-        textView.isAutomaticLinkDetectionEnabled = true
+        textView.isAutomaticLinkDetectionEnabled = false
         textView.linkTextAttributes = [
             .foregroundColor: NSColor.systemBlue,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -671,8 +673,8 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         let style = NSMutableParagraphStyle()
         style.alignment = .right
         style.paragraphSpacingBefore =
-            conversationAttributed.length > 0 ? 8 : 0
-        style.paragraphSpacing = 8
+            conversationAttributed.length > 0 ? 14 : 0
+        style.paragraphSpacing = 14
 
         let attachStr = NSMutableAttributedString(
             attributedString: NSAttributedString(attachment: attachment)
@@ -826,6 +828,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             storage.endEditing()
             CATransaction.commit()
         }
+        responseTextView.updateCodeBlockOverlays()
         updateHeight(animated: true)
         mascot.setState(.idle)
         // Refocus input for follow-up, preserving any text typed during the response
@@ -878,6 +881,9 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         storage.replaceCharacters(in: tailRange, with: rendered)
         storage.endEditing()
         CATransaction.commit()
+
+        // Update code block overlays
+        responseTextView.updateCodeBlockOverlays()
 
         // Auto-scroll to keep latest content visible
         if autoScrollEnabled {

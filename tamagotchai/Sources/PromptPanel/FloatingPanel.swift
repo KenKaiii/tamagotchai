@@ -433,6 +433,12 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
         let isFirstMessage = conversationBaseLength == 0
 
+        // Suppress all animations during content update + scroll
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
         if isFirstMessage {
             // First message: set full text storage
             if let storage = responseTextView.textStorage {
@@ -462,7 +468,30 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             responseTextView.layoutManager?.ensureLayout(for: tc)
         }
         responseScrollView.layoutSubtreeIfNeeded()
+
+        // On subsequent messages, lock to max height immediately to prevent
+        // gradual panel growth that causes content to slide.
+        if !isFirstMessage, !reachedMaxHeight {
+            reachedMaxHeight = true
+            responseHeightConstraint?.constant = responseMaxHeight
+            responseScrollView.hasVerticalScroller = true
+            lastTargetHeight = responseMaxHeight
+            let panelHeight = inputHeight + 1 + responseMaxHeight
+            let newOriginY = topY - panelHeight
+            setFrame(
+                NSRect(
+                    x: frame.origin.x, y: newOriginY,
+                    width: panelWidth, height: panelHeight
+                ),
+                display: false
+            )
+            positionMascotOverSpacer()
+        }
+
         scrollToBottomInstantly()
+
+        CATransaction.commit()
+        NSAnimationContext.endGrouping()
 
         // Clear input immediately
         inputField.stringValue = ""
@@ -756,9 +785,12 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             location: conversationBaseLength,
             length: storage.length - conversationBaseLength
         )
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         storage.beginEditing()
         storage.replaceCharacters(in: tailRange, with: rendered)
         storage.endEditing()
+        CATransaction.commit()
 
         // Auto-scroll to keep latest content visible
         if autoScrollEnabled {
@@ -852,8 +884,12 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         let docHeight = responseTextView.frame.height
         let visibleHeight = clipView.bounds.height
         let targetY = max(0, docHeight - visibleHeight)
-        clipView.scroll(to: NSPoint(x: 0, y: targetY))
+        // Use setBoundsOrigin for immediate, non-animated positioning
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        clipView.setBoundsOrigin(NSPoint(x: 0, y: targetY))
         responseScrollView.reflectScrolledClipView(clipView)
+        CATransaction.commit()
     }
 
     // MARK: - Text change tracking

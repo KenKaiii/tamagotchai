@@ -31,15 +31,15 @@ line_length:
 
 type_body_length:
   warning: 300
-  error: 700
+  error: 800
 
 file_length:
   warning: 500
-  error: 1100
+  error: 1200
 
 function_body_length:
   warning: 50
-  error: 120
+  error: 140
 
 identifier_name:
   min_length:

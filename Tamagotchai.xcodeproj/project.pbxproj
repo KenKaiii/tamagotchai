@@ -20,6 +20,7 @@
 		3663F97EF2E69F69683216DD /* GrepToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB29B0F1E450E5E8A53E226 /* GrepToolTests.swift */; };
 		36AE6F0084BDBABB7C84C713 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = 6CC46E0EB5B907637FEDD4E2 /* Highlightr */; };
 		398C599C51D54FDA7B15A8E8 /* FindTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B57A17D8297CE0C2848871 /* FindTool.swift */; };
+		3AD96FC81D1A407C7A56AEB4 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E486201C304EAB13FBF233 /* MenuBarIcon.swift */; };
 		4291668781FF244B5A7EE081 /* GrepTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB467A37B99F8825954718A9 /* GrepTool.swift */; };
 		430108368AEE49E3F0F90741 /* ResponseTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C1ED0AF6B8F14C84DABB06 /* ResponseTextView.swift */; };
 		45F7F1A523FE5E69A58B038E /* FindToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79334AAFB8659DA675AEED17 /* FindToolTests.swift */; };
@@ -71,6 +72,7 @@
 		DDC23F57DB0A9623506D08E3 /* FloatingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24EF6276BE226C9B7F8E56F /* FloatingPanel.swift */; };
 		DDF98E5261E14B234ABB8722 /* notification.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 11578A4FDB7FF0EFD6F2D63B /* notification.mp3 */; };
 		E0368A9A22612832A2ECD645 /* EditTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F1811FA8B877563B30475E /* EditTool.swift */; };
+		E39D6A235CBEA18B5907E2E6 /* MenuBarMood.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6D951AE065F8C9D50F7534 /* MenuBarMood.swift */; };
 		E3A8828582665AE5DD36D50F /* LsToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA90322492F1A2679940340 /* LsToolTests.swift */; };
 		E53464559DF16636B3AA3F97 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DBF6D948FB1FEC79444D571 /* MarkdownRenderer.swift */; };
 		E566577EF74445A44CDEC685 /* BashTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A72ADD77BE83A08A891E51 /* BashTool.swift */; };
@@ -102,6 +104,7 @@
 		39BF415CCE6B24532C86B53B /* StreamParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamParserTests.swift; sourceTree = "<group>"; };
 		3AFDAAE592DC9D8AF0B29B87 /* KokoroManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KokoroManager.swift; sourceTree = "<group>"; };
 		3EB817C959C551CC56FD772F /* BashToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BashToolTests.swift; sourceTree = "<group>"; };
+		3F6D951AE065F8C9D50F7534 /* MenuBarMood.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarMood.swift; sourceTree = "<group>"; };
 		3FB29B0F1E450E5E8A53E226 /* GrepToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrepToolTests.swift; sourceTree = "<group>"; };
 		46B666BC978765216D62FF84 /* avatar_pack.riv */ = {isa = PBXFileReference; path = avatar_pack.riv; sourceTree = "<group>"; };
 		4AAE3B60D199496B2AD15707 /* WebFetchTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebFetchTool.swift; sourceTree = "<group>"; };
@@ -114,6 +117,7 @@
 		67E3EDA27B48F99948A62D34 /* PermissionsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsWindowController.swift; sourceTree = "<group>"; };
 		6D449322E10E6BB23C918E50 /* PromptPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPanelController.swift; sourceTree = "<group>"; };
 		72A72ADD77BE83A08A891E51 /* BashTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BashTool.swift; sourceTree = "<group>"; };
+		74E486201C304EAB13FBF233 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		76F26E815173BCF54B26DCB9 /* Tamagotchai.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tamagotchai.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7878CFDA4C915D3023570D92 /* FileSystemToolHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemToolHelpersTests.swift; sourceTree = "<group>"; };
 		79334AAFB8659DA675AEED17 /* FindToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindToolTests.swift; sourceTree = "<group>"; };
@@ -317,6 +321,8 @@
 			children = (
 				1850BDC2200F82D29A6FD001 /* DropdownPanelController.swift */,
 				85A1ADE518F5788DF19D46F2 /* GlassButton.swift */,
+				74E486201C304EAB13FBF233 /* MenuBarIcon.swift */,
+				3F6D951AE065F8C9D50F7534 /* MenuBarMood.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -577,6 +583,8 @@
 				E53464559DF16636B3AA3F97 /* MarkdownRenderer.swift in Sources */,
 				C10EA6F9E96084609564E571 /* MascotState.swift in Sources */,
 				AFB8A474EC6602B09505E1F1 /* MascotView.swift in Sources */,
+				3AD96FC81D1A407C7A56AEB4 /* MenuBarIcon.swift in Sources */,
+				E39D6A235CBEA18B5907E2E6 /* MenuBarMood.swift in Sources */,
 				6C44A6DCF36B6EFEABBA96F3 /* NotchNotificationPresenter.swift in Sources */,
 				A105647F2FA2573F43DBD388 /* PanelHelperViews.swift in Sources */,
 				F9B668289D091B6C74895B33 /* PermissionsChecker.swift in Sources */,

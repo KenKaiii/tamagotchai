@@ -15,7 +15,7 @@ struct TamagotchaiApp: App {
 
     var body: some Scene {
         // Menu bar presence — the app lives in the menu bar
-        MenuBarExtra("Tamagotchai", systemImage: "pawprint.fill") {
+        MenuBarExtra {
             Button("Open Tamagotchai") {
                 PromptPanelController.shared.toggle()
             }
@@ -58,6 +58,12 @@ struct TamagotchaiApp: App {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q", modifiers: [.command])
+        } label: {
+            let moodState = MenuBarMood.shared
+            Image(nsImage: MenuBarIcon.create(
+                mood: moodState.mood,
+                animationFrame: moodState.animationFrame
+            ))
         }
     }
 }

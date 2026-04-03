@@ -104,6 +104,7 @@ final class PromptPanelController {
         SpeechService.shared.stop()
         VoiceService.shared.stopFollowUpCapture()
         panel?.hideToolIndicator()
+        MenuBarMood.shared.setActivity(nil)
         if clearHistory {
             conversationHistory.removeAll()
         }
@@ -193,6 +194,7 @@ final class PromptPanelController {
         }
 
         VoiceService.shared.startFollowUpCapture()
+        MenuBarMood.shared.setActivity(.listening)
     }
 
     // MARK: - Submit
@@ -204,6 +206,7 @@ final class PromptPanelController {
         cancelAllActiveTasks()
 
         panel?.mascot.setState(.waiting)
+        MenuBarMood.shared.setActivity(.thinking)
 
         // Capture and clear input immediately so user can start typing next prompt
         let userText = panel?.consumeInput() ?? text
@@ -211,6 +214,7 @@ final class PromptPanelController {
         guard ClaudeService.shared.isLoggedIn else {
             logger.warning("Submit attempted but not logged in")
             panel?.mascot.setState(.idle)
+            MenuBarMood.shared.setActivity(.error)
             let err = AppError.notConnected
             panel?.showError(title: err.title, message: err.message, tint: err.tint)
             return
@@ -305,6 +309,9 @@ final class PromptPanelController {
             // Start streaming TTS session so sentences are spoken as they arrive
             if speakInline {
                 SpeechService.shared.beginStreaming()
+                MenuBarMood.shared.setActivity(.speaking)
+            } else {
+                MenuBarMood.shared.setActivity(.responding)
             }
 
             do {
@@ -326,6 +333,7 @@ final class PromptPanelController {
                 logger.error("Stream response error: \(error.localizedDescription)")
                 conversationHistory.removeLast()
                 panel.hideToolIndicator()
+                MenuBarMood.shared.setActivity(.error)
                 let appError = AppError.from(error)
                 panel.showError(
                     title: appError.title,

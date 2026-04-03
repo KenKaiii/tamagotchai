@@ -1,6 +1,12 @@
 import AppKit
 import CryptoKit
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "oauth"
+)
 
 /// Handles the OAuth PKCE flow for Anthropic's Claude API.
 @MainActor
@@ -43,6 +49,7 @@ enum ClaudeOAuth {
         let state = UUID().uuidString
         pendingVerifier = verifier
         pendingState = state
+        logger.info("Starting OAuth login flow (state: \(state))")
 
         var components = URLComponents(string: authorizeURL)!
         components.queryItems = [
@@ -65,8 +72,10 @@ enum ClaudeOAuth {
     /// and saving credentials. Returns the credentials on success.
     @discardableResult
     static func completeLogin(rawCode: String) async throws -> OAuthCredentials {
+        logger.info("Completing login (code length: \(rawCode.count))")
         let parts = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "#", maxSplits: 1)
         guard parts.count == 2 else {
+            logger.error("Invalid code format — expected code#state")
             throw OAuthError.invalidCodeFormat
         }
 
@@ -74,6 +83,7 @@ enum ClaudeOAuth {
         let state = String(parts[1])
 
         guard let verifier = pendingVerifier, state == pendingState else {
+            logger.error("State mismatch — expected: \(pendingState ?? "nil"), got: \(state)")
             throw OAuthError.stateMismatch
         }
 
@@ -83,6 +93,7 @@ enum ClaudeOAuth {
         pendingVerifier = nil
         pendingState = nil
 
+        logger.info("Login completed successfully")
         return credentials
     }
 
@@ -101,6 +112,7 @@ enum ClaudeOAuth {
     }
 
     static func refreshToken(_ refreshToken: String) async throws -> OAuthCredentials {
+        logger.info("Refreshing OAuth token")
         let body: [String: String] = [
             "grant_type": "refresh_token",
             "client_id": clientID,
@@ -122,6 +134,7 @@ enum ClaudeOAuth {
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             let bodyString = String(data: data, encoding: .utf8) ?? ""
+            logger.error("Token exchange failed — HTTP \(statusCode): \(bodyString)")
             throw OAuthError.tokenExchangeFailed(statusCode: statusCode, body: bodyString)
         }
 

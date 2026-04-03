@@ -1,8 +1,12 @@
+import AVFoundation
+import Speech
 import SwiftUI
 
 struct PermissionsView: View {
     @State private var accessibilityGranted = false
     @State private var fullDiskAccessGranted = false
+    @State private var microphoneGranted = false
+    @State private var speechGranted = false
 
     private let checker = PermissionsChecker.shared
 
@@ -41,6 +45,40 @@ struct PermissionsView: View {
                         checker.revealAppInFinder()
                     }
                 )
+
+                Divider().opacity(0.3).padding(.horizontal, 14)
+
+                permissionRow(
+                    title: "Microphone",
+                    description: "Required for voice input (hold ⌥Space).",
+                    granted: microphoneGranted,
+                    action: {
+                        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+                            checker.requestMicrophone { _ in
+                                refreshStatuses()
+                            }
+                        } else {
+                            checker.openMicrophoneSettings()
+                        }
+                    }
+                )
+
+                Divider().opacity(0.3).padding(.horizontal, 14)
+
+                permissionRow(
+                    title: "Speech Recognition",
+                    description: "Required for voice-to-text transcription.",
+                    granted: speechGranted,
+                    action: {
+                        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
+                            checker.requestSpeechRecognition { _ in
+                                refreshStatuses()
+                            }
+                        } else {
+                            checker.openMicrophoneSettings()
+                        }
+                    }
+                )
             }
 
             Divider().opacity(0.3)
@@ -65,6 +103,8 @@ struct PermissionsView: View {
     private func refreshStatuses() {
         accessibilityGranted = checker.isAccessibilityGranted()
         fullDiskAccessGranted = checker.isFullDiskAccessGranted()
+        microphoneGranted = checker.isMicrophoneGranted()
+        speechGranted = checker.isSpeechRecognitionGranted()
     }
 
     private func permissionRow(
@@ -94,7 +134,7 @@ struct PermissionsView: View {
                     .background(Color.green.opacity(0.15))
                     .clipShape(Capsule())
             } else {
-                GlassButton("Open Settings") { action() }
+                GlassButton("Grant") { action() }
             }
         }
         .padding(.horizontal, 14)

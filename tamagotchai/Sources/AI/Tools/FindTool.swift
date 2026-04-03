@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.find"
+)
 
 private struct ToolError: LocalizedError {
     let message: String
@@ -32,21 +38,14 @@ final class FindTool: AgentTool, @unchecked Sendable {
         self.workingDirectory = workingDirectory
     }
 
-    private static let ignoredDirectories: Set<String> = [
-        ".git", "node_modules", ".build", "DerivedData", "__pycache__", ".DS_Store",
-    ]
-
     func execute(args: [String: Any]) async throws -> String {
         guard let pattern = args["pattern"] as? String else {
             throw ToolError(message: "Missing required parameter: pattern")
         }
 
         let pathArg = args["path"] as? String ?? "."
-        let searchPath: String = if pathArg.hasPrefix("/") {
-            pathArg
-        } else {
-            (workingDirectory as NSString).appendingPathComponent(pathArg)
-        }
+        logger.info("Finding files: pattern=\(pattern, privacy: .public), path=\(pathArg, privacy: .public)")
+        let searchPath = FileSystemToolHelpers.resolvePath(pathArg, workingDirectory: workingDirectory)
 
         let standardized = (searchPath as NSString).standardizingPath
         return try findFiles(pattern: pattern, in: standardized)
@@ -62,6 +61,7 @@ final class FindTool: AgentTool, @unchecked Sendable {
         guard fm.fileExists(atPath: directory, isDirectory: &isDir),
               isDir.boolValue
         else {
+            logger.error("Directory not found: \(directory, privacy: .public)")
             throw ToolError(message: "Directory not found: \(directory)")
         }
 
@@ -83,7 +83,7 @@ final class FindTool: AgentTool, @unchecked Sendable {
             let relativePath = url.relativePath
             let lastComponent = url.lastPathComponent
 
-            if Self.ignoredDirectories.contains(lastComponent) {
+            if FileSystemToolHelpers.ignoredDirectories.contains(lastComponent) {
                 enumerator.skipDescendants()
                 continue
             }
@@ -100,6 +100,7 @@ final class FindTool: AgentTool, @unchecked Sendable {
         }
 
         matches.sort()
+        logger.info("Find complete: \(totalMatches) matches")
 
         if matches.isEmpty {
             return "No files found matching pattern: \(pattern)"

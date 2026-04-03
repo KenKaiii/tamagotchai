@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.ls"
+)
 
 private struct ToolError: LocalizedError {
     let message: String
@@ -35,18 +41,16 @@ final class LsTool: AgentTool, @unchecked Sendable {
     func execute(args: [String: Any]) async throws -> String {
         let pathArg = args["path"] as? String ?? "."
         let showAll = args["all"] as? Bool ?? false
+        logger.info("Listing directory: \(pathArg, privacy: .public), showAll: \(showAll)")
 
-        let resolvedPath: String = if pathArg.hasPrefix("/") {
-            pathArg
-        } else {
-            (workingDirectory as NSString).appendingPathComponent(pathArg)
-        }
+        let resolvedPath = FileSystemToolHelpers.resolvePath(pathArg, workingDirectory: workingDirectory)
 
         let standardized = (resolvedPath as NSString).standardizingPath
         let fm = FileManager.default
 
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: standardized, isDirectory: &isDir), isDir.boolValue else {
+            logger.error("Directory not found: \(standardized, privacy: .public)")
             throw ToolError(message: "Directory not found: \(standardized)")
         }
 
@@ -88,6 +92,8 @@ final class LsTool: AgentTool, @unchecked Sendable {
             let padded = humanSize.padding(toLength: 7, withPad: " ", startingAt: 0)
             lines.append("f  \(padded)  \(name)")
         }
+
+        logger.info("Listing complete: \(dirs.count) dirs, \(files.count) files")
 
         if lines.isEmpty {
             return "(empty directory)"

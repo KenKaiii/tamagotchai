@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.web"
+)
 
 /// Agent tool that fetches and reads content from a URL.
 final class WebFetchTool: AgentTool, @unchecked Sendable {
@@ -37,13 +43,20 @@ final class WebFetchTool: AgentTool, @unchecked Sendable {
         }
 
         let maxLength = (args["max_length"] as? NSNumber)?.intValue ?? 10000
+        logger.info("Fetching URL: \(urlString, privacy: .public), maxLength: \(maxLength)")
 
         guard let url = URL(string: urlString) else {
+            logger.error("Invalid URL: \(urlString, privacy: .public)")
             throw WebFetchError.invalidURL(urlString)
         }
 
         // SSRF protection — block private/local addresses.
-        try validateHost(url)
+        do {
+            try validateHost(url)
+        } catch {
+            logger.error("Blocked host for URL: \(urlString, privacy: .public)")
+            throw error
+        }
 
         // Configure URLSession with 30s timeout.
         let config = URLSessionConfiguration.ephemeral
@@ -58,6 +71,7 @@ final class WebFetchTool: AgentTool, @unchecked Sendable {
         }
 
         guard (200 ... 299).contains(httpResponse.statusCode) else {
+            logger.error("HTTP error \(httpResponse.statusCode) for URL: \(urlString, privacy: .public)")
             return "HTTP error: \(httpResponse.statusCode)"
         }
 
@@ -95,9 +109,11 @@ final class WebFetchTool: AgentTool, @unchecked Sendable {
         // Truncate if needed.
         if text.count > maxLength {
             let truncated = String(text.prefix(maxLength))
+            logger.info("Fetch complete: \(text.count) chars, truncated=true")
             return truncated + "\n[...truncated at \(maxLength) chars]"
         }
 
+        logger.info("Fetch complete: \(text.count) chars, truncated=false")
         return text
     }
 

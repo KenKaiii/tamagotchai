@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.bash"
+)
 
 /// Agent tool that executes shell commands via `/bin/bash -c`.
 final class BashTool: AgentTool, @unchecked Sendable {
@@ -44,6 +50,7 @@ final class BashTool: AgentTool, @unchecked Sendable {
         }
 
         let timeoutMs = args["timeout"] as? Int ?? Self.defaultTimeoutMs
+        logger.info("Executing bash command: \(command.prefix(200), privacy: .public), timeout: \(timeoutMs)ms")
         let (process, pipe) = try makeProcess(command: command)
         let readTask = Task.detached { () -> Data in
             pipe.fileHandleForReading.readDataToEndOfFile()
@@ -57,6 +64,10 @@ final class BashTool: AgentTool, @unchecked Sendable {
         let outputData = await readTask.value
         let exitCode = process.terminationStatus
         let rawOutput = String(data: outputData, encoding: .utf8) ?? ""
+        logger
+            .info(
+                "Bash command complete: exitCode=\(exitCode), outputLength=\(rawOutput.count), timedOut=\(didTimeout)"
+            )
 
         return formatResult(
             exitCode: exitCode,
@@ -85,6 +96,7 @@ final class BashTool: AgentTool, @unchecked Sendable {
         do {
             try process.run()
         } catch {
+            logger.error("Process launch failed: \(error.localizedDescription, privacy: .public)")
             throw BashToolError.launchFailed(error.localizedDescription)
         }
         return (process, pipe)

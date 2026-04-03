@@ -42,21 +42,28 @@ final class AgentLoop {
         var accumulatedText = ""
 
         for turn in 0 ..< maxTurns {
+            try Task.checkCancellation()
             logger.info("Agent loop turn \(turn + 1)")
 
-            let response = try await claude.sendWithTools(
-                messages: conversation,
-                tools: tools,
-                systemPrompt: systemPrompt,
-                onEvent: { event in
-                    if case let .textDelta(text) = event {
-                        onEvent(.textDelta(text))
+            let response: ClaudeResponse
+            do {
+                response = try await claude.sendWithTools(
+                    messages: conversation,
+                    tools: tools,
+                    systemPrompt: systemPrompt,
+                    onEvent: { event in
+                        if case let .textDelta(text) = event {
+                            onEvent(.textDelta(text))
+                        }
+                        if case let .toolUseStart(id, name) = event {
+                            onEvent(.toolStart(name: name, id: id))
+                        }
                     }
-                    if case let .toolUseStart(id, name) = event {
-                        onEvent(.toolStart(name: name, id: id))
-                    }
-                }
-            )
+                )
+            } catch {
+                logger.error("sendWithTools failed on turn \(turn + 1): \(error.localizedDescription)")
+                throw error
+            }
 
             // Build the assistant message content for conversation
             let assistantContent = buildAssistantContent(
@@ -75,11 +82,13 @@ final class AgentLoop {
             let shouldContinue =
                 response.stopReason == "tool_use" && !toolCalls.isEmpty
             if !shouldContinue {
+                logger.info("Turn complete — stop_reason=\(response.stopReason ?? "nil")")
                 onEvent(.turnComplete(text: accumulatedText))
                 return conversation
             }
 
             // Execute each tool and collect results
+            try Task.checkCancellation()
             let toolResults = await executeTools(
                 toolCalls,
                 onEvent: onEvent
@@ -153,12 +162,20 @@ final class AgentLoop {
             let output: String
             nonisolated(unsafe) let args = call.input
             if let tool = registry.tool(named: call.name) {
+                let startTime = CFAbsoluteTimeGetCurrent()
+                logger.info("Tool execution start: \(call.name) (args: \(Array(call.input.keys)))")
                 do {
                     output = try await tool.execute(args: args)
+                    let durationMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
+                    logger.info("Tool execution complete: \(call.name) — \(output.count) chars, \(durationMs)ms")
                 } catch {
+                    let durationMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
+                    logger
+                        .error("Tool execution failed: \(call.name) — \(error.localizedDescription) (\(durationMs)ms)")
                     output = "Error: \(error.localizedDescription)"
                 }
             } else {
+                logger.warning("Unknown tool requested: \(call.name)")
                 output = "Error: Unknown tool '\(call.name)'"
             }
 

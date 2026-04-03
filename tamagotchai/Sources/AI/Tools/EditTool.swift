@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.edit"
+)
 
 final class EditTool: AgentTool, @unchecked Sendable {
     let name = "edit"
@@ -61,17 +67,18 @@ final class EditTool: AgentTool, @unchecked Sendable {
             throw ToolError.missingParameter("new_text")
         }
 
-        let absolutePath: String = if filePath.hasPrefix("/") {
-            filePath
-        } else {
-            (workingDirectory as NSString).appendingPathComponent(filePath)
-        }
+        let absolutePath = FileSystemToolHelpers.resolvePath(filePath, workingDirectory: workingDirectory)
+        logger
+            .info(
+                "Editing file: \(absolutePath, privacy: .public), oldTextLength: \(rawOldText.count), newTextLength: \(rawNewText.count)"
+            )
 
         let fileURL = URL(fileURLWithPath: absolutePath)
 
         guard let rawData = try? Data(contentsOf: fileURL),
               let rawContent = String(data: rawData, encoding: .utf8)
         else {
+            logger.error("File not readable: \(absolutePath, privacy: .public)")
             throw ToolError.fileNotReadable(absolutePath)
         }
 
@@ -84,9 +91,11 @@ final class EditTool: AgentTool, @unchecked Sendable {
         let count = countOccurrences(of: oldText, in: content)
 
         if count == 0 {
+            logger.error("old_text not found in \(absolutePath, privacy: .public)")
             throw ToolError.notFound
         }
         if count > 1 {
+            logger.error("old_text matches \(count) locations in \(absolutePath, privacy: .public)")
             throw ToolError.multipleMatches(count)
         }
 
@@ -107,6 +116,7 @@ final class EditTool: AgentTool, @unchecked Sendable {
             newText: newText
         )
 
+        logger.info("Edit complete: \(absolutePath, privacy: .public)")
         return diff
     }
 

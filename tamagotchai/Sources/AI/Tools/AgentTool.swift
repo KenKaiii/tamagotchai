@@ -1,5 +1,32 @@
 import Foundation
 
+/// Shared helpers for file-system-based tools (path resolution, binary detection, directory filtering).
+enum FileSystemToolHelpers {
+    /// Resolves a possibly-relative path against the given working directory.
+    static func resolvePath(_ path: String, workingDirectory: String) -> String {
+        if path.hasPrefix("/") {
+            return path
+        }
+        return (workingDirectory as NSString).appendingPathComponent(path)
+    }
+
+    /// File extensions treated as binary (skipped by read/grep).
+    static let binaryExtensions: Set<String> = [
+        "jpg", "jpeg", "png", "gif", "bmp", "ico", "webp", "svg",
+        "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac",
+        "pdf", "zip", "tar", "gz", "bz2", "7z", "rar",
+        "exe", "dll", "dylib", "so", "o", "a",
+        "class", "jar", "pyc", "wasm",
+        "ttf", "otf", "woff", "woff2", "eot",
+        "sqlite", "db",
+    ]
+
+    /// Directories that should be skipped during recursive file enumeration.
+    static let ignoredDirectories: Set<String> = [
+        ".git", "node_modules", ".build", "DerivedData", "__pycache__",
+    ]
+}
+
 /// Protocol that all agent tools must conform to.
 protocol AgentTool: Sendable {
     /// The tool name as sent to the Anthropic API (e.g. "bash", "read").

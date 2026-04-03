@@ -229,6 +229,15 @@ final class ResponseTextView: NSTextView {
         bgPath.stroke()
     }
 
+    /// Removes all copy button overlays. Call when resetting the text view
+    /// (e.g. on new chat) to avoid stale buttons lingering over empty content.
+    func removeAllCopyButtons() {
+        for button in copyButtons {
+            button.removeFromSuperview()
+        }
+        copyButtons.removeAll()
+    }
+
     /// Creates, repositions, or removes copy button overlays
     /// to match current code blocks.
     func updateCodeBlockOverlays() {

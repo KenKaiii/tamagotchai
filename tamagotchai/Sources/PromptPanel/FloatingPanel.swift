@@ -12,7 +12,6 @@ private let panelLogger = Logger(
 /// - Floats above all windows
 /// - Dismisses when focus is lost or Escape is pressed
 /// - Grows downward from a fixed top edge when content expands
-// swiftlint:disable:next type_body_length
 final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -85,6 +84,37 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Once the panel reaches max height, it stays there for the session.
     private var reachedMaxHeight = false
 
+    /// Whether the panel was activated by voice (shows waveform).
+    private var isVoiceActivated = false
+
+    /// Audio waveform view shown floating above the panel during voice mode.
+    private lazy var audioWaveformView: AudioWaveformView = {
+        let v = AudioWaveformView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.isHidden = true
+        return v
+    }()
+
+    /// Child window that hosts the waveform above the panel (no background).
+    private lazy var waveformWindow: NSWindow = {
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 120, height: 24),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        w.backgroundColor = .clear
+        w.isOpaque = false
+        w.hasShadow = false
+        w.level = .floating
+        w.ignoresMouseEvents = true
+        w.contentView = audioWaveformView
+        audioWaveformView.frame = w.contentView!.bounds
+        audioWaveformView.autoresizingMask = [.width, .height]
+        audioWaveformView.isHidden = false
+        return w
+    }()
+
     /// Tool activity indicator shown during tool execution.
     private lazy var toolIndicatorView: ToolIndicatorView = {
         let v = ToolIndicatorView()
@@ -109,6 +139,12 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
     /// Called when the user types in the input field.
     var onTextChanged: ((String) -> Void)?
+
+    /// Called when the panel is dismissed (Escape, focus loss, etc.).
+    var onDismiss: (() -> Void)?
+
+    /// Called when the user presses Escape while agent is active — interrupt, don't dismiss.
+    var onInterrupt: (() -> Bool)?
 
     // MARK: - UI Components
 
@@ -342,6 +378,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 53 {
+            // Try interrupt first — if something was interrupted, don't dismiss
+            if onInterrupt?() == true {
+                return
+            }
             dismiss()
             return
         }
@@ -882,9 +922,6 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         storage.endEditing()
         CATransaction.commit()
 
-        // Update code block overlays
-        responseTextView.updateCodeBlockOverlays()
-
         // Auto-scroll to keep latest content visible
         if autoScrollEnabled {
             scrollToBottomInstantly()
@@ -954,23 +991,6 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         if autoScrollEnabled { scrollToBottomInstantly() }
     }
 
-    /// Returns true if the scroll view is at or near the bottom (within 30px).
-    private func isScrolledNearBottom() -> Bool {
-        let contentHeight = responseScrollView.documentView?.frame.height ?? 0
-        let visibleHeight = responseScrollView.contentView.bounds.height
-        let scrollY = responseScrollView.contentView.bounds.origin.y
-        // If content is shorter than visible area, consider it "at bottom"
-        guard contentHeight > visibleHeight else { return true }
-        return scrollY >= contentHeight - visibleHeight - 30
-    }
-
-    /// Scrolls to the bottom of the response only if the user hasn't scrolled up.
-    private func scrollToBottomIfNeeded() {
-        if isScrolledNearBottom() {
-            scrollToBottomInstantly()
-        }
-    }
-
     /// Scrolls to the absolute bottom without any animation.
     private func scrollToBottomInstantly() {
         let clipView = responseScrollView.contentView
@@ -992,12 +1012,114 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         onTextChanged?(text)
     }
 
+    // MARK: - Voice Mode
+
+    /// Whether the session was started via voice (persists across capture/response cycles).
+    private(set) var isVoiceSession = false
+
+    /// Updates the audio waveform level during voice capture.
+    func setAudioLevel(_ rms: Double) {
+        guard isVoiceActivated else { return }
+        audioWaveformView.setAudioLevel(rms)
+    }
+
+    /// Inserts transcribed voice text into the input field.
+    func insertVoiceText(_ text: String) {
+        inputField.stringValue = text
+    }
+
+    /// Hides the waveform after voice capture completes (entering response streaming).
+    /// Keeps voice session active — placeholder stays voice-appropriate.
+    func hideWaveform() {
+        guard isVoiceActivated else { return }
+        isVoiceActivated = false
+        dismissWaveformWindow()
+        // During voice session response, show empty placeholder (not "Ask anything")
+        if isVoiceSession {
+            inputField.placeholderString = ""
+        }
+    }
+
+    /// Shows the voice UI — waveform visible, placeholder invites typing or speaking.
+    func showVoiceFollowUp() {
+        isVoiceActivated = true
+        isVoiceSession = true
+        inputField.placeholderString = "Type or say anything you like…"
+        showWaveformWindow()
+        makeFirstResponder(inputField)
+    }
+
+    /// Smoothly hides the waveform when the user starts typing during voice follow-up.
+    func hideWaveformForTyping() {
+        guard isVoiceActivated else { return }
+        isVoiceActivated = false
+        inputField.placeholderString = "Ask anything…"
+        isVoiceSession = false
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            self.waveformWindow.animator().alphaValue = 0
+        } completionHandler: {
+            MainActor.assumeIsolated { [weak self] in
+                guard let self else { return }
+                dismissWaveformWindow()
+                waveformWindow.alphaValue = 1
+            }
+        }
+    }
+
+    /// Ends the voice session entirely (panel dismiss or explicit stop).
+    func endVoiceSession() {
+        isVoiceActivated = false
+        isVoiceSession = false
+        dismissWaveformWindow()
+        inputField.placeholderString = "Ask anything…"
+    }
+
+    // MARK: - Waveform Window
+
+    private func showWaveformWindow() {
+        audioWaveformView.startAnimating()
+        positionWaveformWindow()
+        waveformWindow.alphaValue = 0
+        addChildWindow(waveformWindow, ordered: .above)
+        waveformWindow.orderFront(nil)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            self.waveformWindow.animator().alphaValue = 1
+        }
+    }
+
+    private func dismissWaveformWindow() {
+        audioWaveformView.stopAnimating()
+        removeChildWindow(waveformWindow)
+        waveformWindow.orderOut(nil)
+    }
+
+    /// Positions the waveform window centered above the panel.
+    private func positionWaveformWindow() {
+        let waveformWidth: CGFloat = 120
+        let waveformHeight: CGFloat = 24
+        let gap: CGFloat = 6
+        let x = frame.midX - waveformWidth / 2
+        let y = frame.maxY + gap
+        waveformWindow.setFrame(
+            NSRect(x: x, y: y, width: waveformWidth, height: waveformHeight),
+            display: true
+        )
+    }
+
     // MARK: - Presentation
 
     func present() {
+        panelLogger.info("Panel presenting")
         isDismissing = false
 
         // Reset state
+        if !isVoiceActivated {
+            dismissWaveformWindow()
+            inputField.placeholderString = "Ask anything…"
+        }
         inputField.stringValue = ""
         rawMarkdown = ""
         pendingMarkdown = ""
@@ -1020,6 +1142,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         toolIndicatorView.isHidden = true
         toolIndicatorView.alphaValue = 0
         responseTextView.textStorage?.setAttributedString(NSAttributedString())
+        responseTextView.removeAllCopyButtons()
         dividerContainer.isHidden = true
         responseScrollView.isHidden = true
         responseHeightConstraint?.constant = 0
@@ -1066,7 +1189,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
     func dismiss() {
         guard !isDismissing else { return }
+        panelLogger.info("Panel dismissing")
         isDismissing = true
+        endVoiceSession()
+        onDismiss?()
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
@@ -1080,245 +1206,6 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
                 self.mascot.window.orderOut(nil)
                 self.orderOut(nil)
                 self.isDismissing = false
-            }
-        }
-    }
-}
-
-// MARK: - Non-scrollable scroll view
-
-/// NSScrollView subclass that blocks scroll wheel events when the content fits entirely
-/// within the visible area, preventing unnecessary micro-scrolling.
-private final class ConditionalScrollView: NSScrollView {
-    /// Called when the user manually scrolls.
-    var onUserScroll: (() -> Void)?
-
-    override func scrollWheel(with event: NSEvent) {
-        guard let documentView else { return super.scrollWheel(with: event) }
-        let contentHeight = documentView.frame.height
-        let visibleHeight = contentView.bounds.height
-        if contentHeight <= visibleHeight + 1 {
-            // Content fits — don't scroll, pass event up the responder chain
-            nextResponder?.scrollWheel(with: event)
-        } else {
-            // Detect user scrolling up
-            if event.scrollingDeltaY > 0 {
-                onUserScroll?()
-            }
-            super.scrollWheel(with: event)
-        }
-    }
-}
-
-// MARK: - Flipped stack view
-
-/// NSStackView subclass with flipped coordinates so arranged subviews
-/// stack top-to-bottom (first = top) instead of the default bottom-to-top.
-private final class FlippedStackView: NSStackView {
-    override var isFlipped: Bool { true }
-}
-
-// MARK: - White cursor text field
-
-/// NSTextField subclass that sets the insertion point (cursor) color to white.
-private final class WhiteCursorTextField: NSTextField {
-    override func becomeFirstResponder() -> Bool {
-        let result = super.becomeFirstResponder()
-        if let fieldEditor = currentEditor() as? NSTextView {
-            fieldEditor.insertionPointColor = .white
-        }
-        return result
-    }
-}
-
-// MARK: - Skeleton shimmer view
-
-/// Displays 3 animated skeleton bars with a shimmer gradient, used as a loading placeholder.
-private final class SkeletonView: NSView {
-    private let barLayers: [CALayer] = {
-        let widthFractions: [CGFloat] = [0.65, 0.85, 0.45]
-        return widthFractions.map { _ in
-            let layer = CALayer()
-            layer.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
-            layer.cornerRadius = 6
-            return layer
-        }
-    }()
-
-    private let shimmerLayer: CAGradientLayer = {
-        let gradient = CAGradientLayer()
-        gradient.colors = [
-            NSColor.clear.cgColor,
-            NSColor(white: 1.0, alpha: 0.12).cgColor,
-            NSColor.clear.cgColor,
-        ]
-        gradient.startPoint = CGPoint(x: 0, y: 0.5)
-        gradient.endPoint = CGPoint(x: 1, y: 0.5)
-        gradient.locations = [-1, -0.5, 0].map { NSNumber(value: $0) }
-        return gradient
-    }()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        for bar in barLayers {
-            layer?.addSublayer(bar)
-        }
-        layer?.addSublayer(shimmerLayer)
-        layer?.masksToBounds = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layout() {
-        super.layout()
-        let barHeight: CGFloat = 12
-        let spacing: CGFloat = 10
-        let widthFractions: [CGFloat] = [0.65, 0.85, 0.45]
-
-        for (i, bar) in barLayers.enumerated() {
-            let y = CGFloat(i) * (barHeight + spacing)
-            bar.frame = CGRect(
-                x: 0,
-                y: y,
-                width: bounds.width * widthFractions[i],
-                height: barHeight
-            )
-        }
-        shimmerLayer.frame = bounds
-    }
-
-    func startAnimating() {
-        let animation = CABasicAnimation(keyPath: "locations")
-        animation.fromValue = [-1.0, -0.5, 0.0].map { NSNumber(value: $0) }
-        animation.toValue = [1.0, 1.5, 2.0].map { NSNumber(value: $0) }
-        animation.duration = 1.2
-        animation.repeatCount = .infinity
-        shimmerLayer.add(animation, forKey: "shimmer")
-    }
-
-    func stopAnimating() {
-        shimmerLayer.removeAnimation(forKey: "shimmer")
-    }
-}
-
-// MARK: - Tool activity indicator
-
-/// A small glassmorphism pill that shows which tool is currently running.
-private final class ToolIndicatorView: NSView {
-    private let pillRadius: CGFloat = 12
-
-    private let vibrancy: NSVisualEffectView = {
-        let v = NSVisualEffectView()
-        v.material = .hudWindow
-        v.state = .active
-        v.blendingMode = .withinWindow
-        v.wantsLayer = true
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
-    }()
-
-    private let spinner: NSProgressIndicator = {
-        let p = NSProgressIndicator()
-        p.style = .spinning
-        p.controlSize = .small
-        p.isIndeterminate = true
-        p.translatesAutoresizingMaskIntoConstraints = false
-        return p
-    }()
-
-    private let label: NSTextField = {
-        let t = NSTextField(labelWithString: "")
-        t.font = .systemFont(ofSize: 11, weight: .medium)
-        t.textColor = NSColor.white.withAlphaComponent(0.85)
-        t.lineBreakMode = .byTruncatingTail
-        t.maximumNumberOfLines = 1
-        t.translatesAutoresizingMaskIntoConstraints = false
-        return t
-    }()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = pillRadius
-        layer?.masksToBounds = true
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
-
-        addSubview(vibrancy)
-        NSLayoutConstraint.activate([
-            vibrancy.leadingAnchor.constraint(equalTo: leadingAnchor),
-            vibrancy.trailingAnchor.constraint(equalTo: trailingAnchor),
-            vibrancy.topAnchor.constraint(equalTo: topAnchor),
-            vibrancy.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-
-        let stack = NSStackView(views: [spinner, label])
-        stack.orientation = .horizontal
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 12)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        vibrancy.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: vibrancy.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: vibrancy.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: vibrancy.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: vibrancy.bottomAnchor),
-
-            label.widthAnchor.constraint(equalToConstant: 100),
-
-            spinner.widthAnchor.constraint(equalToConstant: 16),
-            spinner.heightAnchor.constraint(equalToConstant: 16),
-        ])
-
-        alphaValue = 0
-    }
-
-    @available(*, unavailable)
-    required init?(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    static func displayName(for toolName: String) -> String {
-        switch toolName {
-        case "bash": "Running bash…"
-        case "read": "Reading file…"
-        case "write": "Writing file…"
-        case "edit": "Editing file…"
-        case "ls": "Listing dir…"
-        case "find": "Finding files…"
-        case "grep": "Searching…"
-        case "web_fetch": "Fetching URL…"
-        case "web_search": "Searching web…"
-        default: "Working…"
-        }
-    }
-
-    func show(toolName: String) {
-        let displayText = Self.displayName(for: toolName)
-        spinner.startAnimation(nil)
-        isHidden = false
-
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
-            ctx.allowsImplicitAnimation = true
-            self.label.stringValue = displayText
-            self.animator().alphaValue = 1
-        }
-    }
-
-    func hide() {
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
-            self.animator().alphaValue = 0
-        } completionHandler: {
-            MainActor.assumeIsolated { [weak self] in
-                self?.isHidden = true
-                self?.spinner.stopAnimation(nil)
             }
         }
     }

@@ -6,12 +6,15 @@ import os
 @MainActor
 final class PromptPanelController {
     static let shared = PromptPanelController()
-    private let logger = Logger(subsystem: "com.unstablemind.tamagotchai", category: "hotkey")
+    private let logger = Logger(subsystem: "com.unstablemind.tamagotchai", category: "controller")
 
     private var panel: FloatingPanel?
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private var conversationHistory: [[String: Any]] = []
+    private var isVoiceMode = false
+    private var activeAgentTask: Task<Void, Never>?
+    private var activeStreamTask: Task<Void, Never>?
     private lazy var agentLoop = AgentLoop(
         workingDirectory: Self.ensureWorkspace()
     )
@@ -29,7 +32,6 @@ final class PromptPanelController {
     // MARK: - Public
 
     /// Registers the global hotkey.
-    /// Default shortcut: ⌥ + Space (Option + Space).
     func register(
         keyCode: UInt32 = UInt32(kVK_Space),
         modifiers: UInt32 = UInt32(optionKey)
@@ -49,8 +51,10 @@ final class PromptPanelController {
         }
     }
 
-    /// Toggles the panel visibility.
+    /// Toggles the panel. Opens with voice+typing ready. If already open, dismisses.
     func toggle() {
+        let isVisible = panel?.isVisible ?? false
+        logger.info("Toggle panel (currently visible: \(isVisible))")
         if let panel, panel.isVisible {
             panel.dismiss()
         } else {
@@ -61,32 +65,126 @@ final class PromptPanelController {
     // MARK: - Panel
 
     private func showPanel() {
-        if panel == nil {
-            let newPanel = FloatingPanel()
-            newPanel.onSubmit = { [weak self] text in
-                self?.handleSubmit(text)
-            }
-            newPanel.onTextChanged = { [weak newPanel] text in
-                if text.isEmpty {
-                    newPanel?.mascot.setState(.idle)
-                } else {
-                    newPanel?.mascot.notifyKeystroke()
-                }
-            }
-            panel = newPanel
-        }
-
+        logger.info("Showing panel")
+        ensurePanel()
         conversationHistory = []
         panel?.present()
+
+        // Start voice capture alongside typing — user decides by their action
+        startVoiceCapture()
     }
 
+    private func ensurePanel() {
+        guard panel == nil else { return }
+        let newPanel = FloatingPanel()
+        newPanel.onSubmit = { [weak self] text in
+            self?.handleSubmit(text)
+        }
+        newPanel.onTextChanged = { [weak self, weak newPanel] text in
+            guard let self, let newPanel else { return }
+            if text.isEmpty {
+                newPanel.mascot.setState(.idle)
+            } else {
+                newPanel.mascot.notifyKeystroke()
+                // User started typing — cancel voice capture & speech, switch to typing mode
+                if VoiceService.shared.state == .followUp {
+                    logger.info("User typing — cancelling voice capture")
+                    SpeechService.shared.stop()
+                    VoiceService.shared.stopFollowUpCapture()
+                    newPanel.hideWaveformForTyping()
+                    isVoiceMode = false
+                }
+            }
+        }
+        newPanel.onInterrupt = { [weak self] in
+            guard let self else { return false }
+            return interruptAgent()
+        }
+        newPanel.onDismiss = { [weak self] in
+            guard let self else { return }
+            _ = interruptAgent()
+            isVoiceMode = false
+            SpeechService.shared.stop()
+            VoiceService.shared.stopFollowUpCapture()
+        }
+        panel = newPanel
+    }
+
+    // MARK: - Interrupt
+
+    /// Interrupts any active agent response, TTS, and voice capture.
+    /// Returns true if something was interrupted, false if nothing was active.
+    @discardableResult
+    private func interruptAgent() -> Bool {
+        let wasActive = (activeAgentTask != nil && !activeAgentTask!.isCancelled)
+            || SpeechService.shared.isSpeaking
+
+        if let task = activeAgentTask, !task.isCancelled {
+            logger.info("Interrupting agent task")
+            task.cancel()
+        }
+        if let task = activeStreamTask, !task.isCancelled {
+            task.cancel()
+        }
+        activeAgentTask = nil
+        activeStreamTask = nil
+
+        SpeechService.shared.stop()
+        VoiceService.shared.stopFollowUpCapture()
+        panel?.hideToolIndicator()
+        panel?.mascot.setState(.idle)
+
+        if wasActive {
+            logger.info("Agent interrupted — ready for next prompt")
+            // Restart voice capture so user can speak again
+            startVoiceCapture()
+        }
+
+        return wasActive
+    }
+
+    // MARK: - Voice Capture
+
+    /// Starts voice capture with waveform. User can speak or type — typing cancels voice.
+    private func startVoiceCapture() {
+        SpeechService.shared.stop()
+        isVoiceMode = true
+        panel?.showVoiceFollowUp()
+
+        VoiceService.shared.onPartialTranscript = { [weak self] transcript in
+            self?.panel?.insertVoiceText(transcript)
+        }
+
+        VoiceService.shared.onCaptureComplete = { [weak self] transcript in
+            guard let self else { return }
+            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            panel?.hideWaveform()
+
+            if !trimmed.isEmpty {
+                panel?.insertVoiceText(trimmed)
+                handleSubmit(trimmed)
+            }
+            // isVoiceMode stays true — next ⌥Space will start voice again
+        }
+
+        VoiceService.shared.onAudioLevelChanged = { [weak self] level in
+            self?.panel?.setAudioLevel(level)
+        }
+
+        VoiceService.shared.startFollowUpCapture()
+    }
+
+    // MARK: - Submit
+
     private func handleSubmit(_ text: String) {
+        logger.info("handleSubmit — text length: \(text.count)")
         panel?.mascot.setState(.waiting)
 
         // Capture and clear input immediately so user can start typing next prompt
         let userText = panel?.consumeInput() ?? text
 
         guard ClaudeService.shared.isLoggedIn else {
+            logger.warning("Submit attempted but not logged in")
             panel?.mascot.setState(.idle)
             panel?.showResponse(
                 "Not logged in to Claude. Use the menu bar → Login to Claude."
@@ -96,32 +194,46 @@ final class PromptPanelController {
 
         conversationHistory.append(["role": "user", "content": userText])
 
-        // Bridge AgentLoop events into an AsyncThrowingStream for the panel
         let (stream, continuation) = AsyncThrowingStream.makeStream(
             of: String.self
         )
 
-        Task { @MainActor [weak self] in
+        let systemPrompt = isVoiceMode ? voiceSystemPrompt : agentSystemPrompt
+        // swiftformat:disable:next redundantSelf
+        logger.info("Using \(self.isVoiceMode ? "voice" : "typing") system prompt")
+
+        // In voice mode, stop mic and start streaming TTS before the agent runs
+        let speakInline = isVoiceMode
+        if speakInline {
+            VoiceService.shared.stopFollowUpCapture()
+            panel?.hideWaveform()
+        }
+
+        activeAgentTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
             do {
+                try Task.checkCancellation()
                 let updatedHistory = try await agentLoop.run(
                     messages: conversationHistory,
-                    systemPrompt: agentSystemPrompt,
+                    systemPrompt: systemPrompt,
                     onEvent: { [weak self] event in
                         switch event {
                         case let .textDelta(delta):
-                            // Hide tool indicator once text resumes after a tool
                             DispatchQueue.main.async {
                                 self?.panel?.hideToolIndicator()
+                                if speakInline {
+                                    SpeechService.shared.feedChunk(delta)
+                                }
                             }
                             continuation.yield(delta)
                         case let .toolStart(name, _):
-                            // Insert a line break so text before the tool
-                            // doesn't merge with text after it
                             continuation.yield("\n\n")
                             DispatchQueue.main.async {
                                 self?.panel?.showToolIndicator(name: name)
+                                if speakInline {
+                                    SpeechService.shared.flushBuffer()
+                                }
                             }
                         case .toolResult:
                             break
@@ -139,25 +251,55 @@ final class PromptPanelController {
                     }
                 )
                 conversationHistory = updatedHistory
+                // swiftformat:disable:next redundantSelf
+                logger.info("Conversation history updated — \(self.conversationHistory.count) messages")
+            } catch is CancellationError {
+                logger.info("Agent task cancelled")
+                continuation.finish()
             } catch {
+                logger.error("Agent loop error: \(error.localizedDescription)")
                 continuation.finish(throwing: error)
             }
         }
 
-        Task { @MainActor [weak self] in
+        activeStreamTask = Task { @MainActor [weak self] in
             guard let self, let panel else { return }
+
+            // Start streaming TTS session so sentences are spoken as they arrive
+            if speakInline {
+                SpeechService.shared.beginStreaming()
+            }
 
             do {
                 _ = try await panel.streamResponse(stream, userText: userText)
+
+                if speakInline {
+                    await SpeechService.shared.finishStreaming()
+                }
+
+                // Restart voice capture for next prompt
+                startVoiceCapture()
+            } catch is CancellationError {
+                logger.info("Stream task cancelled")
+                if speakInline {
+                    SpeechService.shared.stop()
+                }
+                startVoiceCapture()
             } catch {
+                logger.error("Stream response error: \(error.localizedDescription)")
                 conversationHistory.removeLast()
                 panel.showResponse(
                     "Error: \(error.localizedDescription)"
                 )
                 panel.mascot.setState(.idle)
             }
+
+            activeAgentTask = nil
+            activeStreamTask = nil
         }
     }
+
+    // MARK: - System Prompts
 
     private var agentSystemPrompt: String {
         let cwd = Self.ensureWorkspace()
@@ -166,6 +308,31 @@ final class PromptPanelController {
         you can run shell commands (bash), read/write/edit files, \
         search code (grep/find), list directories (ls), and fetch web \
         pages. working directory: \(cwd)
+        """
+    }
+
+    private var voiceSystemPrompt: String {
+        let cwd = Self.ensureWorkspace()
+        return """
+        you have access to tools for working with the user's computer. \
+        you can run shell commands (bash), read/write/edit files, \
+        search code (grep/find), list directories (ls), and fetch web \
+        pages. working directory: \(cwd)
+
+        CRITICAL: this is a voice conversation. your response will be spoken aloud. \
+        you MUST be extremely brief:
+
+        - answer in ONE sentence when possible. never exceed two sentences unless \
+        the user explicitly asks you to explain in detail.
+        - use proper grammar and punctuation. write naturally as if speaking.
+        - absolutely no markdown, no bullet points, no code blocks, no headers. \
+        plain text only.
+        - for tool results: say what happened in a few words. \
+        "Done." or "I've updated that file." or "There are 12 files." — that's it.
+        - do not repeat the user's question back to them. do not add pleasantries \
+        like "Sure!" or "Of course!" — just answer directly.
+        - if the user asks something complex, give the short answer first, \
+        then ask if they want more detail.
         """
     }
 

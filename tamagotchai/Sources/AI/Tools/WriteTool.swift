@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.write"
+)
 
 final class WriteTool: AgentTool, @unchecked Sendable {
     let name = "write"
@@ -26,27 +32,21 @@ final class WriteTool: AgentTool, @unchecked Sendable {
         self.workingDirectory = workingDirectory
     }
 
+    private struct ToolError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
     func execute(args: [String: Any]) async throws -> String {
         guard let filePath = args["file_path"] as? String else {
-            throw NSError(
-                domain: "WriteTool",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing required parameter: file_path"]
-            )
+            throw ToolError(message: "Missing required parameter: file_path")
         }
         guard let content = args["content"] as? String else {
-            throw NSError(
-                domain: "WriteTool",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing required parameter: content"]
-            )
+            throw ToolError(message: "Missing required parameter: content")
         }
 
-        let absolutePath: String = if filePath.hasPrefix("/") {
-            filePath
-        } else {
-            (workingDirectory as NSString).appendingPathComponent(filePath)
-        }
+        let absolutePath = FileSystemToolHelpers.resolvePath(filePath, workingDirectory: workingDirectory)
+        logger.info("Writing file: \(absolutePath, privacy: .public), contentBytes: \(content.utf8.count)")
 
         let fileURL = URL(fileURLWithPath: absolutePath)
         let parentDir = fileURL.deletingLastPathComponent()
@@ -55,15 +55,21 @@ final class WriteTool: AgentTool, @unchecked Sendable {
         try fm.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
         guard let data = content.data(using: .utf8) else {
-            throw NSError(
-                domain: "WriteTool",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to encode content as UTF-8"]
-            )
+            logger.error("Failed to encode content as UTF-8 for \(absolutePath, privacy: .public)")
+            throw ToolError(message: "Failed to encode content as UTF-8")
         }
 
-        try data.write(to: fileURL)
+        do {
+            try data.write(to: fileURL)
+        } catch {
+            logger
+                .error(
+                    "Failed to write file \(absolutePath, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            throw error
+        }
 
+        logger.info("Write complete: \(data.count) bytes to \(absolutePath, privacy: .public)")
         return "Wrote \(data.count) bytes to \(absolutePath)"
     }
 }

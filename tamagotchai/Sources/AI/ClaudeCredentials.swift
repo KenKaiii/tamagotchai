@@ -1,5 +1,11 @@
 import CryptoKit
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "credentials"
+)
 
 /// OAuth credentials for the Anthropic API.
 struct OAuthCredentials: Codable {
@@ -23,13 +29,16 @@ enum ClaudeCredentials {
     /// A stable device-derived key so credentials survive rebuilds.
     /// Falls back to a hardcoded key if the hardware UUID is unavailable.
     private nonisolated(unsafe) static var encryptionKey: SymmetricKey = {
-        let seed = if let uuid = getHardwareUUID() {
-            "com.unstablemind.tamagotchai.\(uuid)"
+        if let uuid = getHardwareUUID() {
+            let seed = "com.unstablemind.tamagotchai.\(uuid)"
+            let hash = SHA256.hash(data: Data(seed.utf8))
+            return SymmetricKey(data: hash)
         } else {
-            "com.unstablemind.tamagotchai.fallback-key"
+            logger.warning("Hardware UUID unavailable, using fallback encryption key")
+            let seed = "com.unstablemind.tamagotchai.fallback-key"
+            let hash = SHA256.hash(data: Data(seed.utf8))
+            return SymmetricKey(data: hash)
         }
-        let hash = SHA256.hash(data: Data(seed.utf8))
-        return SymmetricKey(data: hash)
     }()
 
     private static func credentialsURL() throws -> URL {
@@ -45,26 +54,69 @@ enum ClaudeCredentials {
     }
 
     static func save(_ credentials: OAuthCredentials) throws {
-        let data = try JSONEncoder().encode(credentials)
-        let sealed = try ChaChaPoly.seal(data, using: encryptionKey)
-        let combined = sealed.combined
-        try combined.write(to: credentialsURL())
+        do {
+            let data = try JSONEncoder().encode(credentials)
+            let sealed = try ChaChaPoly.seal(data, using: encryptionKey)
+            let combined = sealed.combined
+            try combined.write(to: credentialsURL())
+            logger.info("Credentials saved successfully")
+        } catch {
+            logger.error("Failed to save credentials: \(error.localizedDescription)")
+            throw error
+        }
     }
 
     static func load() -> OAuthCredentials? {
-        guard let url = try? credentialsURL(),
-              let combined = try? Data(contentsOf: url),
-              let box = try? ChaChaPoly.SealedBox(combined: combined),
-              let data = try? ChaChaPoly.open(box, using: encryptionKey)
-        else {
+        let url: URL
+        do {
+            url = try credentialsURL()
+        } catch {
+            logger.error("Failed to resolve credentials URL: \(error.localizedDescription)")
             return nil
         }
-        return try? JSONDecoder().decode(OAuthCredentials.self, from: data)
+
+        let combined: Data
+        do {
+            combined = try Data(contentsOf: url)
+        } catch {
+            logger.error("Failed to read credentials file: \(error.localizedDescription)")
+            return nil
+        }
+
+        let box: ChaChaPoly.SealedBox
+        do {
+            box = try ChaChaPoly.SealedBox(combined: combined)
+        } catch {
+            logger.error("Failed to create sealed box from credentials data: \(error.localizedDescription)")
+            return nil
+        }
+
+        let data: Data
+        do {
+            data = try ChaChaPoly.open(box, using: encryptionKey)
+        } catch {
+            logger.error("Failed to decrypt credentials: \(error.localizedDescription)")
+            return nil
+        }
+
+        do {
+            let credentials = try JSONDecoder().decode(OAuthCredentials.self, from: data)
+            logger.info("Credentials loaded successfully")
+            return credentials
+        } catch {
+            logger.error("Failed to decode credentials JSON: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     static func delete() {
-        guard let url = try? credentialsURL() else { return }
-        try? FileManager.default.removeItem(at: url)
+        do {
+            let url = try credentialsURL()
+            try FileManager.default.removeItem(at: url)
+            logger.info("Credentials deleted successfully")
+        } catch {
+            logger.error("Failed to delete credentials: \(error.localizedDescription)")
+        }
     }
 
     /// Reads the hardware UUID from IOKit (stable across rebuilds).

@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.read"
+)
 
 final class ReadTool: AgentTool, @unchecked Sendable {
     let workingDirectory: String
@@ -38,16 +44,6 @@ final class ReadTool: AgentTool, @unchecked Sendable {
 
     // MARK: - Constants
 
-    private static let binaryExtensions: Set<String> = [
-        "jpg", "jpeg", "png", "gif", "bmp", "ico", "webp", "svg",
-        "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac",
-        "pdf", "zip", "tar", "gz", "bz2", "7z", "rar",
-        "exe", "dll", "dylib", "so", "o", "a",
-        "class", "jar", "pyc", "wasm",
-        "ttf", "otf", "woff", "woff2", "eot",
-        "sqlite", "db",
-    ]
-
     private static let maxLines = 2000
     private static let maxBytes = 51200 // 50KB
 
@@ -72,11 +68,15 @@ final class ReadTool: AgentTool, @unchecked Sendable {
             throw ToolError.invalidArguments("Missing required argument: file_path")
         }
 
-        let resolvedPath = resolvePath(filePath)
+        let resolvedPath = FileSystemToolHelpers.resolvePath(filePath, workingDirectory: workingDirectory)
+        let offset = args["offset"] as? Int
+        let limit = args["limit"] as? Int
+        logger.info("Reading file: \(resolvedPath, privacy: .public), offset: \(offset ?? 1), limit: \(limit ?? -1)")
         let url = URL(fileURLWithPath: resolvedPath)
         let filename = url.lastPathComponent
 
-        if Self.binaryExtensions.contains(url.pathExtension.lowercased()) {
+        if FileSystemToolHelpers.binaryExtensions.contains(url.pathExtension.lowercased()) {
+            logger.warning("Binary file detected: \(resolvedPath, privacy: .public)")
             return "Binary file detected: \(filename)"
         }
 
@@ -84,23 +84,19 @@ final class ReadTool: AgentTool, @unchecked Sendable {
         let lines = splitLines(content)
         let slice = applyOffsetAndLimit(lines: lines, args: args)
 
-        return formatLines(slice)
+        let result = formatLines(slice)
+        logger.info("Read complete: \(slice.count) lines returned")
+        return result
     }
 
     // MARK: - Helpers
-
-    private func resolvePath(_ filePath: String) -> String {
-        if filePath.hasPrefix("/") {
-            return filePath
-        }
-        return (workingDirectory as NSString).appendingPathComponent(filePath)
-    }
 
     private func readUTF8(url: URL, filename: String) throws -> String {
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
+            logger.error("Failed to read file: \(error.localizedDescription, privacy: .public)")
             throw ToolError.executionFailed("Failed to read file: \(error.localizedDescription)")
         }
 

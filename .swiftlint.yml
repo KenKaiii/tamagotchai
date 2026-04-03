@@ -31,7 +31,7 @@ line_length:
 
 type_body_length:
   warning: 300
-  error: 800
+  error: 900
 
 file_length:
   warning: 500

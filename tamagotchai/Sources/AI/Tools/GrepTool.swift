@@ -1,4 +1,10 @@
 import Foundation
+import os
+
+private let logger = Logger(
+    subsystem: "com.unstablemind.tamagotchai",
+    category: "tool.grep"
+)
 
 private struct ToolError: LocalizedError {
     let message: String
@@ -45,29 +51,21 @@ final class GrepTool: AgentTool, @unchecked Sendable {
         self.workingDirectory = workingDirectory
     }
 
-    private static let ignoredDirectories: Set<String> = [
-        ".git", "node_modules", ".build", "DerivedData", "__pycache__",
-    ]
-
-    private static let binaryExtensions: Set<String> = [
-        "jpg", "jpeg", "png", "gif", "bmp", "ico", "webp", "svg",
-        "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac",
-        "pdf", "zip", "tar", "gz", "bz2", "7z", "rar",
-        "exe", "dll", "dylib", "so", "o", "a",
-        "class", "jar", "pyc", "wasm",
-        "ttf", "otf", "woff", "woff2", "eot",
-        "sqlite", "db",
-    ]
-
     func execute(args: [String: Any]) async throws -> String {
         let params = try parseArgs(args)
+        logger
+            .info(
+                "Grep search: pattern=\(params.pattern, privacy: .public), path=\(params.standardizedPath, privacy: .public), include=\(params.includeGlob ?? "(none)", privacy: .public)"
+            )
         let regex = try buildRegex(pattern: params.pattern, caseInsensitive: params.caseInsensitive)
         let filesToSearch = try collectFiles(
             standardizedPath: params.standardizedPath,
             isDirectory: params.isDirectory,
             includeGlob: params.includeGlob
         )
-        return searchFiles(filesToSearch, regex: regex, maxResults: params.maxResults)
+        let result = searchFiles(filesToSearch, regex: regex, maxResults: params.maxResults)
+        logger.info("Grep complete: \(filesToSearch.count) files searched")
+        return result
     }
 
     // MARK: - Private Helpers
@@ -87,15 +85,14 @@ final class GrepTool: AgentTool, @unchecked Sendable {
         }
 
         let pathArg = args["path"] as? String ?? "."
-        let resolvedPath = pathArg.hasPrefix("/")
-            ? pathArg
-            : (workingDirectory as NSString).appendingPathComponent(pathArg)
+        let resolvedPath = FileSystemToolHelpers.resolvePath(pathArg, workingDirectory: workingDirectory)
 
         let standardized = (resolvedPath as NSString).standardizingPath
         let fm = FileManager.default
 
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: standardized, isDirectory: &isDir) else {
+            logger.error("Path not found: \(standardized, privacy: .public)")
             throw ToolError(message: "Path not found: \(standardized)")
         }
 
@@ -117,6 +114,7 @@ final class GrepTool: AgentTool, @unchecked Sendable {
         do {
             return try NSRegularExpression(pattern: pattern, options: options)
         } catch {
+            logger.error("Invalid regex pattern: \(error.localizedDescription, privacy: .public)")
             throw ToolError(message: "Invalid regex pattern: \(error.localizedDescription)")
         }
     }
@@ -152,7 +150,7 @@ final class GrepTool: AgentTool, @unchecked Sendable {
             guard let url = obj as? URL else { continue }
             let lastComponent = url.lastPathComponent
 
-            if Self.ignoredDirectories.contains(lastComponent) {
+            if FileSystemToolHelpers.ignoredDirectories.contains(lastComponent) {
                 enumerator.skipDescendants()
                 continue
             }
@@ -170,7 +168,7 @@ final class GrepTool: AgentTool, @unchecked Sendable {
         if resourceValues?.isDirectory == true { return false }
 
         let ext = url.pathExtension.lowercased()
-        if Self.binaryExtensions.contains(ext) { return false }
+        if FileSystemToolHelpers.binaryExtensions.contains(ext) { return false }
 
         if let glob = includeGlob, fnmatch(glob, url.lastPathComponent, 0) != 0 {
             return false
@@ -183,7 +181,7 @@ final class GrepTool: AgentTool, @unchecked Sendable {
         at filePath: String
     ) throws -> [(path: String, relativePath: String)] {
         let ext = (filePath as NSString).pathExtension.lowercased()
-        if Self.binaryExtensions.contains(ext) {
+        if FileSystemToolHelpers.binaryExtensions.contains(ext) {
             throw ToolError(message: "Cannot search binary file: \(filePath)")
         }
 

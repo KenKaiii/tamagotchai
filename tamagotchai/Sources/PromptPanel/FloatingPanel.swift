@@ -364,14 +364,20 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         ])
     }
 
+    /// Extra bottom content inset added when the tool indicator is visible
+    /// so the streaming cursor / last line is never hidden behind the floating pill.
+    private let toolIndicatorBottomInset: CGFloat = 36
+
     // MARK: - Tool Indicator
 
     func showToolIndicator(name: String) {
         toolIndicatorView.show(toolName: name)
+        responseScrollView.contentInsets.bottom = toolIndicatorBottomInset
     }
 
     func hideToolIndicator() {
         toolIndicatorView.hide()
+        responseScrollView.contentInsets.bottom = 0
     }
 
     // MARK: - Dismiss on Escape
@@ -885,30 +891,32 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         }
     }
 
-    /// Re-renders the current displayedMarkdown into the text view,
-    /// preserving scroll position if the user has scrolled up.
-    /// During streaming, appends a blinking cursor glyph at the end of the text.
+    /// Re-renders displayedMarkdown into the text view.
+    /// Cursor glyph is always present during streaming (layout-stable) with color toggled for blink.
     private func renderDisplayedMarkdown() {
         guard let storage = responseTextView.textStorage else { return }
 
-        // Append cursor glyph during streaming if visible
-        let showCursor = !streamFinished && cursorVisible
-        let textToRender = if showCursor {
-            displayedMarkdown + Self.streamingCursorGlyph
-        } else {
-            displayedMarkdown
-        }
-        if showCursor || typingFinished {
-            let sf = streamFinished
-            let cv = cursorVisible
-            let tf = typingFinished
-            let dmLen = displayedMarkdown.count
-            panelLogger.debug(
-                "render: showCursor=\(showCursor) streamFinished=\(sf) cursorVisible=\(cv) typingFinished=\(tf) displayedLen=\(dmLen)"
-            )
-        }
+        let isStreaming = !streamFinished
+        let textToRender = isStreaming
+            ? displayedMarkdown + Self.streamingCursorGlyph
+            : displayedMarkdown
 
         let rendered = MarkdownRenderer.render(textToRender)
+
+        // Toggle cursor color (visible ↔ transparent) instead of adding/removing the glyph
+        let finalRendered: NSAttributedString
+        if isStreaming, rendered.length > 0 {
+            let mutable = NSMutableAttributedString(attributedString: rendered)
+            let str = mutable.string as NSString
+            let cursorRange = str.range(of: Self.streamingCursorGlyph, options: .backwards)
+            if cursorRange.location != NSNotFound {
+                let color: NSColor = cursorVisible ? .labelColor : .labelColor.withAlphaComponent(0)
+                mutable.addAttribute(.foregroundColor, value: color, range: cursorRange)
+            }
+            finalRendered = mutable
+        } else {
+            finalRendered = rendered
+        }
 
         // Replace only the streaming tail — leave conversation history untouched
         let tailRange = NSRange(
@@ -918,7 +926,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         storage.beginEditing()
-        storage.replaceCharacters(in: tailRange, with: rendered)
+        storage.replaceCharacters(in: tailRange, with: finalRendered)
         storage.endEditing()
         CATransaction.commit()
 
@@ -1141,6 +1149,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         skeletonView.isHidden = true
         toolIndicatorView.isHidden = true
         toolIndicatorView.alphaValue = 0
+        responseScrollView.contentInsets.bottom = 0
         responseTextView.textStorage?.setAttributedString(NSAttributedString())
         responseTextView.removeAllCopyButtons()
         dividerContainer.isHidden = true

@@ -13,6 +13,14 @@ final class ClaudeService {
     private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
     private let model = "claude-haiku-4-5-20251001"
 
+    /// Dedicated session with resource timeout so streaming connections
+    /// don't hang forever on network issues (default is 7 days).
+    private let streamingSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }()
+
     /// Base system prompt — static, cacheable.
     let baseSystemPrompt = """
     You are Tamagotchai, a personal assistant living on the user's desktop.
@@ -114,7 +122,7 @@ final class ClaudeService {
             systemPrompt: systemPrompt
         )
 
-        let (bytes, response) = try await URLSession.shared.bytes(
+        let (bytes, response) = try await streamingSession.bytes(
             for: request
         )
 
@@ -239,6 +247,10 @@ final class ClaudeService {
         request.httpBody = try JSONSerialization.data(
             withJSONObject: body
         )
+
+        // Prevent indefinite hangs on dropped connections during streaming.
+        // Default timeoutInterval is 60s which is fine for initial response.
+        request.timeoutInterval = 120
 
         return request
     }

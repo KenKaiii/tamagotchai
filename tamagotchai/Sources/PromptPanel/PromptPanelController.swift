@@ -66,12 +66,29 @@ final class PromptPanelController {
 
     private func showPanel() {
         logger.info("Showing panel")
+
+        // Hard reset: kill any in-flight work from the previous session.
+        // This guarantees a clean slate even if the previous agent hung or errored.
+        cancelAllActiveTasks()
+
         ensurePanel()
         conversationHistory = []
         panel?.present()
 
         // Start voice capture alongside typing — user decides by their action
         startVoiceCapture()
+    }
+
+    /// Cancels and nils all active tasks, stops TTS and voice capture,
+    /// and resets the tool indicator. Safe to call even if nothing is active.
+    private func cancelAllActiveTasks() {
+        activeAgentTask?.cancel()
+        activeStreamTask?.cancel()
+        activeAgentTask = nil
+        activeStreamTask = nil
+        SpeechService.shared.stop()
+        VoiceService.shared.stopFollowUpCapture()
+        panel?.hideToolIndicator()
     }
 
     private func ensurePanel() {
@@ -102,10 +119,8 @@ final class PromptPanelController {
         }
         newPanel.onDismiss = { [weak self] in
             guard let self else { return }
-            _ = interruptAgent()
+            cancelAllActiveTasks()
             isVoiceMode = false
-            SpeechService.shared.stop()
-            VoiceService.shared.stopFollowUpCapture()
         }
         panel = newPanel
     }
@@ -119,24 +134,11 @@ final class PromptPanelController {
         let wasActive = (activeAgentTask != nil && !activeAgentTask!.isCancelled)
             || SpeechService.shared.isSpeaking
 
-        if let task = activeAgentTask, !task.isCancelled {
-            logger.info("Interrupting agent task")
-            task.cancel()
-        }
-        if let task = activeStreamTask, !task.isCancelled {
-            task.cancel()
-        }
-        activeAgentTask = nil
-        activeStreamTask = nil
-
-        SpeechService.shared.stop()
-        VoiceService.shared.stopFollowUpCapture()
-        panel?.hideToolIndicator()
+        cancelAllActiveTasks()
         panel?.mascot.setState(.idle)
 
         if wasActive {
             logger.info("Agent interrupted — ready for next prompt")
-            // Restart voice capture so user can speak again
             startVoiceCapture()
         }
 
@@ -178,6 +180,10 @@ final class PromptPanelController {
 
     private func handleSubmit(_ text: String) {
         logger.info("handleSubmit — text length: \(text.count)")
+
+        // Cancel any in-flight work before starting new ones.
+        cancelAllActiveTasks()
+
         panel?.mascot.setState(.waiting)
 
         // Capture and clear input immediately so user can start typing next prompt
@@ -210,7 +216,15 @@ final class PromptPanelController {
         }
 
         activeAgentTask = Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self else {
+                continuation.finish()
+                return
+            }
+
+            // Guarantee the continuation is finished on ALL exit paths.
+            // Without this, streamResponse hangs forever on the for-await loop
+            // if an unexpected code path skips continuation.finish().
+            defer { continuation.finish() }
 
             do {
                 try Task.checkCancellation()
@@ -241,7 +255,7 @@ final class PromptPanelController {
                             DispatchQueue.main.async {
                                 self?.panel?.hideToolIndicator()
                             }
-                            continuation.finish()
+                        // continuation.finish() handled by defer
                         case let .error(msg):
                             DispatchQueue.main.async {
                                 self?.panel?.hideToolIndicator()
@@ -255,7 +269,6 @@ final class PromptPanelController {
                 logger.info("Conversation history updated — \(self.conversationHistory.count) messages")
             } catch is CancellationError {
                 logger.info("Agent task cancelled")
-                continuation.finish()
             } catch {
                 logger.error("Agent loop error: \(error.localizedDescription)")
                 continuation.finish(throwing: error)
@@ -288,10 +301,12 @@ final class PromptPanelController {
             } catch {
                 logger.error("Stream response error: \(error.localizedDescription)")
                 conversationHistory.removeLast()
+                panel.hideToolIndicator()
                 panel.showResponse(
                     "Error: \(error.localizedDescription)"
                 )
                 panel.mascot.setState(.idle)
+                startVoiceCapture()
             }
 
             activeAgentTask = nil

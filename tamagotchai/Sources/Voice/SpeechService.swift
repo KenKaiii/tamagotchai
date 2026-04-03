@@ -46,6 +46,14 @@ final class SpeechService {
     /// Active generation task (so we can cancel on stop).
     private var generationTask: Task<Void, Never>?
 
+    /// Serial queue for Kokoro TTS generation. KokoroTTS uses NLTagger internally
+    /// (via MisakiSwift G2P) which is not thread-safe and crashes with EXC_BAD_ACCESS
+    /// if called concurrently from multiple threads.
+    private let generationQueue = DispatchQueue(
+        label: "com.unstablemind.tamagotchai.tts-generation",
+        qos: .userInitiated
+    )
+
     // MARK: - Constants
 
     /// Max characters per chunk for Kokoro TTS. Kokoro's token limit is 510,
@@ -329,7 +337,7 @@ final class SpeechService {
 
         generationTask = Task {
             let result: AVAudioPCMBuffer? = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
+                self.generationQueue.async {
                     let buffer = KokoroManager.generateAudioBufferOffMain(text: text, context: snapshot)
                     continuation.resume(returning: buffer)
                 }

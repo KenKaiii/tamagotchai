@@ -48,7 +48,6 @@ final class AgentLoop {
             try Task.checkCancellation()
             logger.info("Agent loop turn \(turn + 1)")
 
-            nonisolated(unsafe) var bufferedTextDeltas: [String] = []
             nonisolated(unsafe) var hasDismissTool = false
 
             let response: ClaudeResponse
@@ -59,16 +58,15 @@ final class AgentLoop {
                     systemPrompt: systemPrompt,
                     onEvent: { event in
                         if case let .textDelta(text) = event {
-                            bufferedTextDeltas.append(text)
+                            // Stream text deltas immediately for smooth UI typing animation.
+                            // Previously these were buffered until a tool call, which caused
+                            // non-tool responses (especially voice) to appear all at once.
+                            onEvent(.textDelta(text))
                         }
                         if case let .toolUseStart(id, name) = event {
                             if name == "dismiss" {
                                 hasDismissTool = true
                             } else {
-                                for delta in bufferedTextDeltas {
-                                    onEvent(.textDelta(delta))
-                                }
-                                bufferedTextDeltas.removeAll()
                                 onEvent(.toolStart(name: name, id: id))
                             }
                         }
@@ -77,13 +75,6 @@ final class AgentLoop {
             } catch {
                 logger.error("sendWithTools failed on turn \(turn + 1): \(error.localizedDescription)")
                 throw error
-            }
-
-            // Flush buffered text only if no dismiss tool was called
-            if !hasDismissTool {
-                for delta in bufferedTextDeltas {
-                    onEvent(.textDelta(delta))
-                }
             }
 
             // Build the assistant message content for conversation

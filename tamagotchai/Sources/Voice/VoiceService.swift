@@ -44,13 +44,17 @@ final class VoiceService: @unchecked Sendable {
     private var noiseFloorRMS: Double = 1e-4
 
     /// Silence duration to auto-finalize after the user stops speaking.
-    private let silenceWindow: TimeInterval = 2.0
+    /// Both audio RMS and transcription updates must be idle for this long.
+    private let silenceWindow: TimeInterval = 2.5
 
     /// Whether the user has spoken at all during this capture.
     private var hasSpoken = false
 
     /// Last time speech was detected (RMS above threshold).
     private var lastHeard: Date?
+
+    /// Last time the speech recognizer produced a new or updated transcript.
+    private var lastTranscriptUpdate: Date?
 
     /// Timer that polls for silence to auto-finalize.
     private var silenceTimer: Timer?
@@ -69,6 +73,7 @@ final class VoiceService: @unchecked Sendable {
         capturedTranscript = ""
         hasSpoken = false
         lastHeard = Date()
+        lastTranscriptUpdate = nil
 
         let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         recognizer?.defaultTaskHint = .dictation
@@ -140,8 +145,12 @@ final class VoiceService: @unchecked Sendable {
                 guard sself.state == .followUp else { return }
 
                 if let transcript, !transcript.isEmpty {
+                    let changed = transcript != sself.capturedTranscript
                     sself.capturedTranscript = transcript
                     sself.hasSpoken = true
+                    if changed {
+                        sself.lastTranscriptUpdate = Date()
+                    }
                     sself.onPartialTranscript?(transcript)
                 }
 
@@ -177,11 +186,14 @@ final class VoiceService: @unchecked Sendable {
         state = .idle
         capturedTranscript = ""
         hasSpoken = false
+        lastTranscriptUpdate = nil
 
         onCaptureComplete?(text)
     }
 
-    /// Polls for silence — when the user has spoken then goes quiet, auto-finalize.
+    /// Polls for silence — auto-finalizes when both audio RMS and transcript
+    /// updates have been idle for `silenceWindow`. This prevents cutting off
+    /// the user during natural pauses between words or sentences.
     private func startSilenceMonitor() {
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
@@ -190,8 +202,25 @@ final class VoiceService: @unchecked Sendable {
                 self?.silenceTimer = nil
                 return
             }
-            guard hasSpoken, let last = lastHeard else { return }
-            if Date().timeIntervalSince(last) >= silenceWindow {
+            guard hasSpoken, let lastAudio = lastHeard else { return }
+
+            let now = Date()
+            let audioSilent = now.timeIntervalSince(lastAudio) >= silenceWindow
+
+            // Also require that the recognizer hasn't produced new text recently.
+            // The recognizer often updates transcript even during brief audio dips,
+            // so this catches cases where RMS drops but the user is still speaking.
+            let transcriptIdle: Bool = if let lastUpdate = lastTranscriptUpdate {
+                now.timeIntervalSince(lastUpdate) >= silenceWindow
+            } else {
+                // No transcript yet — don't finalize on audio silence alone
+                false
+            }
+
+            if audioSilent, transcriptIdle {
+                let audioIdle = String(format: "%.1f", now.timeIntervalSince(lastAudio))
+                let txIdle = String(format: "%.1f", now.timeIntervalSince(lastTranscriptUpdate ?? now))
+                logger.info("Silence detected — audio idle \(audioIdle)s, transcript idle \(txIdle)s")
                 finalize()
             }
         }

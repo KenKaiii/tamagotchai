@@ -24,6 +24,38 @@ enum MenuBarIcon {
         return image
     }
 
+    /// Creates a squircle session icon — the mascot face on a rounded-rect background.
+    /// Returns a non-template image tinted with `labelColor` for use in session lists.
+    static func sessionIcon(mood: MenuBarMood.Mood, size: CGFloat = 28) -> NSImage {
+        let image = NSImage(
+            size: NSSize(width: size, height: size),
+            flipped: false
+        ) { rect in
+            // Draw squircle background
+            let bgPath = NSBezierPath(
+                roundedRect: rect,
+                xRadius: size * 0.24,
+                yRadius: size * 0.24
+            )
+            NSColor.labelColor.withAlphaComponent(0.08).setFill()
+            bgPath.fill()
+
+            // Draw mascot face inset within the squircle
+            let inset = size * 0.16
+            let faceRect = rect.insetBy(dx: inset, dy: inset)
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+            ctx.saveGState()
+            ctx.translateBy(x: faceRect.origin.x, y: faceRect.origin.y)
+            ctx.scaleBy(x: faceRect.width / size, y: faceRect.height / size)
+            let drawRect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
+            Self.draw(in: drawRect, mood: mood, animationFrame: false)
+            ctx.restoreGState()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     // MARK: - Layout Constants
 
     private struct Layout {

@@ -191,6 +191,14 @@ private final class SessionRowView: NSView {
     }
 
     private func setupViews() {
+        let mood = MenuBarMood.Mood(rawValue: session.moodIcon) ?? .afternoon
+        let iconSize: CGFloat = 28
+        let iconImage = MenuBarIcon.sessionIcon(mood: mood, size: iconSize)
+        let iconView = NSImageView(image: iconImage)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         let titleLabel = NSTextField(labelWithString: session.title)
         titleLabel.font = .systemFont(ofSize: 18, weight: .regular)
         titleLabel.textColor = .labelColor
@@ -205,6 +213,7 @@ private final class SessionRowView: NSView {
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
         timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
+        addSubview(iconView)
         addSubview(titleLabel)
         addSubview(timeLabel)
         addSubview(deleteButton)
@@ -216,7 +225,12 @@ private final class SessionRowView: NSView {
         ])
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: iconSize),
+            iconView.heightAnchor.constraint(equalToConstant: iconSize),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -12),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: deleteButton.leadingAnchor, constant: -12),

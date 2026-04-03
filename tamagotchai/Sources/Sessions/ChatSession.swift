@@ -100,6 +100,43 @@ struct ChatSession: Codable, Identifiable {
     var messages: [ChatMessage]
     let createdAt: Date
     var updatedAt: Date
+    /// The mood icon raw value assigned to this session for display in the session list.
+    var moodIcon: String
+
+    init(
+        id: UUID,
+        title: String,
+        messages: [ChatMessage],
+        createdAt: Date,
+        updatedAt: Date,
+        moodIcon: String = MenuBarMood.Mood.allCases.randomElement()!.rawValue
+    ) {
+        self.id = id
+        self.title = title
+        self.messages = messages
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.moodIcon = moodIcon
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        messages = try container.decode([ChatMessage].self, forKey: .messages)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        // Fall back to a deterministic mood based on session ID for legacy sessions
+        moodIcon = try container.decodeIfPresent(String.self, forKey: .moodIcon)
+            ?? Self.deterministicMood(for: container.decode(UUID.self, forKey: .id))
+    }
+
+    /// Picks a stable mood from the session's UUID so legacy sessions always get the same icon.
+    private static func deterministicMood(for id: UUID) -> String {
+        let moods = MenuBarMood.Mood.allCases
+        let index = Int(id.uuid.0) % moods.count
+        return moods[index].rawValue
+    }
 }
 
 // MARK: - API Format Conversion

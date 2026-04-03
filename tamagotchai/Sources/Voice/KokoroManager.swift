@@ -38,7 +38,9 @@ final class KokoroManager: ObservableObject {
 
     // MARK: - Constants
 
+    // swiftlint:disable:next modifier_order
     private nonisolated static let hfBaseURL = "https://huggingface.co/prince-canuma/Kokoro-82M/resolve/main"
+    // swiftlint:disable:next modifier_order
     private nonisolated static let modelFileName = "kokoro-v1_0.safetensors"
     nonisolated static let sampleRate = KokoroTTS.Constants.samplingRate
 
@@ -262,8 +264,11 @@ final class KokoroManager: ObservableObject {
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
             let duration = Double(audio.count) / Double(sampleRate)
             let rtf = elapsed > 0 ? duration / elapsed : 0
+            let durStr = String(format: "%.2f", duration)
+            let elapStr = String(format: "%.2f", elapsed)
+            let rtfStr = String(format: "%.1f", rtf)
             logger.info(
-                "Audio generated — \(audio.count) samples, \(String(format: "%.2f", duration))s audio in \(String(format: "%.2f", elapsed))s (\(String(format: "%.1f", rtf))x realtime)"
+                "Audio generated — \(audio.count) samples, \(durStr)s audio in \(elapStr)s (\(rtfStr)x realtime)"
             )
             return createBuffer(from: audio)
         } catch {
@@ -281,7 +286,8 @@ final class KokoroManager: ObservableObject {
         return Self.generateAudioBufferOffMain(text: text, context: ctx)
     }
 
-    /// Creates an AVAudioPCMBuffer from a float audio array.
+    // Creates an AVAudioPCMBuffer from a float audio array.
+    // swiftlint:disable:next modifier_order
     private nonisolated static func createBuffer(from audio: [Float]) -> AVAudioPCMBuffer? {
         let format = AVAudioFormat(standardFormatWithSampleRate: Double(sampleRate), channels: 1)!
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(audio.count)) else {

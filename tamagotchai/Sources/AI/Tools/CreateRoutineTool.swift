@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that creates a scheduled routine — an LLM-triggered task that runs on a schedule.
-final class CreateRoutineTool: AgentTool, @unchecked Sendable {
+final class CreateRoutineTool: AgentTool {
     let name = "create_routine"
     let description = """
     Create a routine that runs an LLM prompt on a schedule. The prompt is executed by the agent \

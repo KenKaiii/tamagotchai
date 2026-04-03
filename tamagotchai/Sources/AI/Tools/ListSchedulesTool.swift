@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that lists all active scheduled jobs.
-final class ListSchedulesTool: AgentTool, @unchecked Sendable {
+final class ListSchedulesTool: AgentTool {
     let name = "list_schedules"
     let description = "List all active scheduled reminders and routines with their next run times."
 

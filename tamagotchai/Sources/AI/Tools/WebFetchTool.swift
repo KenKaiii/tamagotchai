@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that fetches and reads content from a URL.
-final class WebFetchTool: AgentTool, @unchecked Sendable {
+final class WebFetchTool: AgentTool {
     let name = "web_fetch"
 
     let description =
@@ -65,7 +65,7 @@ final class WebFetchTool: AgentTool, @unchecked Sendable {
               scheme == "http" || scheme == "https"
         else {
             logger.error("Blocked scheme for URL: \(urlString, privacy: .public)")
-            throw WebFetchError.blockedHost(url.scheme ?? "unknown")
+            throw WebFetchError.invalidURL(urlString)
         }
 
         // SSRF protection — block private/local addresses.

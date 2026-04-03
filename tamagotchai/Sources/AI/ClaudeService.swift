@@ -130,8 +130,15 @@ final class ClaudeService {
               (200 ..< 300).contains(http.statusCode)
         else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            logger.error("API request failed — HTTP \(code)")
-            throw ClaudeServiceError.apiError(statusCode: code)
+            // Drain the error body so we get the actual API error message.
+            var bodyData = Data()
+            for try await byte in bytes {
+                bodyData.append(byte)
+                if bodyData.count > 4096 { break }
+            }
+            let body = String(data: bodyData, encoding: .utf8) ?? "<no body>"
+            logger.error("API request failed — HTTP \(code): \(body)")
+            throw ClaudeServiceError.apiError(statusCode: code, body: body)
         }
 
         return try await parseToolStream(
@@ -144,10 +151,10 @@ final class ClaudeService {
 
     private func dynamicContext() -> String {
         let now = Date()
-        let dateFmt = DateFormatter()
-        dateFmt.dateFormat = "EEEE, MMMM d, yyyy"
-        let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "h:mm a"
+        let dateStr = now.formatted(
+            .dateTime.weekday(.wide).month(.wide).day().year()
+        )
+        let timeStr = now.formatted(.dateTime.hour().minute())
         let tz = TimeZone.current
 
         let seconds = tz.secondsFromGMT()
@@ -160,8 +167,8 @@ final class ClaudeService {
 
         return """
         [current context]
-        date: \(dateFmt.string(from: now))
-        time: \(timeFmt.string(from: now))
+        date: \(dateStr)
+        time: \(timeStr)
         timezone: \(tz.identifier) (UTC\(offsetString))
         platform: macOS
         """
@@ -272,15 +279,15 @@ final class ClaudeService {
 
     enum ClaudeServiceError: LocalizedError {
         case notLoggedIn
-        case apiError(statusCode: Int)
+        case apiError(statusCode: Int, body: String)
         case streamError(String)
 
         var errorDescription: String? {
             switch self {
             case .notLoggedIn:
                 "Not logged in to Claude. Use the menu bar to log in."
-            case let .apiError(statusCode):
-                "Claude API error (HTTP \(statusCode))"
+            case let .apiError(statusCode, body):
+                "Claude API error (HTTP \(statusCode)): \(body)"
             case let .streamError(message):
                 "Claude error: \(message)"
             }

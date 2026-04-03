@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import SwiftUI
 
 /// Voice settings panel for configuring Kokoro TTS voices.
@@ -294,6 +295,8 @@ private struct SoundBar: View {
 
 /// Plays audio buffers for voice preview, isolated from the main actor.
 final class AudioPreviewPlayer: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.unstablemind.tamagotchai", category: "voice")
+
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
     private var completion: (() -> Void)?
@@ -310,7 +313,13 @@ final class AudioPreviewPlayer: @unchecked Sendable {
         let node = AVAudioPlayerNode()
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
-        try? engine.start()
+        do {
+            try engine.start()
+        } catch {
+            logger.error("Failed to start audio engine for voice preview: \(error.localizedDescription)")
+            onComplete()
+            return
+        }
 
         node.scheduleBuffer(buffer, at: nil, options: .interrupts) {
             let cb = inst.completion

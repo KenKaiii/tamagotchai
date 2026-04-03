@@ -44,8 +44,10 @@ final class PromptPanelController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.logger.info("Agent requested dismiss — closing panel")
-            self?.panel?.dismiss()
+            MainActor.assumeIsolated {
+                self?.logger.info("Agent requested dismiss — closing panel")
+                self?.panel?.dismiss()
+            }
         }
     }
 
@@ -256,7 +258,7 @@ final class PromptPanelController {
                     onEvent: { [weak self] event in
                         switch event {
                         case let .textDelta(delta):
-                            DispatchQueue.main.async {
+                            MainActor.assumeIsolated {
                                 self?.panel?.hideToolIndicator()
                                 if speakInline {
                                     SpeechService.shared.feedChunk(delta)
@@ -265,7 +267,7 @@ final class PromptPanelController {
                             continuation.yield(delta)
                         case let .toolStart(name, _):
                             continuation.yield("\n\n")
-                            DispatchQueue.main.async {
+                            MainActor.assumeIsolated {
                                 self?.panel?.showToolIndicator(name: name)
                                 if speakInline {
                                     SpeechService.shared.flushBuffer()
@@ -274,12 +276,12 @@ final class PromptPanelController {
                         case .toolResult:
                             break
                         case .turnComplete:
-                            DispatchQueue.main.async {
+                            MainActor.assumeIsolated {
                                 self?.panel?.hideToolIndicator()
                             }
                         // continuation.finish() handled by defer
                         case let .error(msg):
-                            DispatchQueue.main.async {
+                            MainActor.assumeIsolated {
                                 self?.panel?.hideToolIndicator()
                             }
                             continuation.yield("\n\n> **Error:** \(msg)\n\n")

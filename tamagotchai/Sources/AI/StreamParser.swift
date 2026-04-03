@@ -8,6 +8,7 @@ private let logger = Logger(
 
 /// Parses SSE events from the Anthropic streaming API, tracking text and
 /// tool_use content blocks.
+@MainActor
 final class StreamParser {
     private let onEvent: @Sendable (StreamEvent) -> Void
     private var currentEvent = ""
@@ -62,11 +63,20 @@ final class StreamParser {
 
         guard line.hasPrefix("data: ") else { return }
         let json = String(line.dropFirst(6))
-        guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(
-                  with: data
-              ) as? [String: Any]
-        else { return }
+        guard let data = json.data(using: .utf8) else { return }
+        let obj: [String: Any]
+        do {
+            guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                // swiftformat:disable:next redundantSelf
+                logger.warning("Non-object JSON on event \(self.currentEvent): \(json.prefix(200))")
+                return
+            }
+            obj = parsed
+        } catch {
+            // swiftformat:disable:next redundantSelf
+            logger.warning("Malformed JSON on event \(self.currentEvent): \(error.localizedDescription)")
+            return
+        }
 
         switch currentEvent {
         case "content_block_start":
@@ -162,12 +172,25 @@ final class StreamParser {
         if let id = toolId {
             let fullJson = toolJsonParts.joined()
             var input: [String: Any] = [:]
-            if let jsonData = fullJson.data(using: .utf8),
-               let parsed = try? JSONSerialization.jsonObject(
-                   with: jsonData
-               ) as? [String: Any]
-            {
-                input = parsed
+            if let jsonData = fullJson.data(using: .utf8) {
+                do {
+                    if let parsed = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        input = parsed
+                    } else {
+                        let preview = String(fullJson.prefix(200))
+                        let name = toolName ?? "?"
+                        logger.warning(
+                            "Tool input JSON is not an object for \(name): \(preview)"
+                        )
+                    }
+                } catch {
+                    let preview = String(fullJson.prefix(200))
+                    let name = toolName ?? "?"
+                    let desc = error.localizedDescription
+                    logger.warning(
+                        "Failed to parse tool input JSON for \(name): \(desc) — raw: \(preview)"
+                    )
+                }
             }
             if isServerTool {
                 contentBlocks.append(

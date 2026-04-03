@@ -6,7 +6,7 @@ private let logger = Logger(
     category: "tool.read"
 )
 
-final class ReadTool: AgentTool, @unchecked Sendable {
+final class ReadTool: AgentTool {
     let workingDirectory: String
 
     init(workingDirectory: String) {

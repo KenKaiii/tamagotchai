@@ -9,8 +9,8 @@ private let logger = Logger(
 /// Mutes and unmutes the system audio output device while voice capture is active,
 /// preventing system sounds and music from being picked up by the microphone.
 enum SystemAudioMuter: @unchecked Sendable {
-    /// Whether we muted the system and need to restore on stop.
-    /// Only accessed from VoiceService which serializes calls on the main thread.
+    // Whether we muted the system and need to restore on stop.
+    // Only accessed from VoiceService which serializes calls on the main thread.
     // swiftlint:disable:next modifier_order
     private(set) nonisolated(unsafe) static var didMute = false
 

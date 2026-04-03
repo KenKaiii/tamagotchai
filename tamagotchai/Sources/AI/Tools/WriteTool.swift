@@ -6,7 +6,7 @@ private let logger = Logger(
     category: "tool.write"
 )
 
-final class WriteTool: AgentTool, @unchecked Sendable {
+final class WriteTool: AgentTool {
     let name = "write"
     let description = "Write content to a file. Creates parent directories if needed."
     let workingDirectory: String

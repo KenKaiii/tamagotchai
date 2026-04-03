@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that executes shell commands via `/bin/bash -c`.
-final class BashTool: AgentTool, @unchecked Sendable {
+final class BashTool: AgentTool {
     let name = "bash"
     let description = "Execute a bash command. Returns exit code and combined stdout/stderr."
 
@@ -120,9 +120,8 @@ final class BashTool: AgentTool, @unchecked Sendable {
     /// Launches in a new process group so the entire tree can be killed on timeout.
     private func makeProcess(command: String) throws -> (Process, Pipe) {
         let process = Process()
-        // Use setsid wrapper to launch in a new session/process group
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", "exec setsid /bin/bash -c " + shellEscape(command)]
+        process.arguments = ["-c", command]
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
         process.environment = ProcessInfo.processInfo.environment.merging(
             ["TERM": "dumb"]
@@ -150,7 +149,7 @@ final class BashTool: AgentTool, @unchecked Sendable {
     /// Closes the pipe on timeout so the read task can complete.
     /// Returns `true` if the process timed out.
     private func waitWithTimeout(process: Process, pipe: Pipe, seconds: Double) async -> Bool {
-        await withUnsafeContinuation { (continuation: UnsafeContinuation<Bool, Never>) in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let group = DispatchGroup()
             group.enter()
 

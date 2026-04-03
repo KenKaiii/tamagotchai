@@ -154,10 +154,12 @@ enum NotchNotificationPresenter {
                 display: true
             )
         } completionHandler: {
-            panel.orderOut(nil)
-            panel.alphaValue = 1
-            if activePanel === panel {
-                activePanel = nil
+            MainActor.assumeIsolated {
+                panel.orderOut(nil)
+                panel.alphaValue = 1
+                if activePanel === panel {
+                    activePanel = nil
+                }
             }
         }
     }

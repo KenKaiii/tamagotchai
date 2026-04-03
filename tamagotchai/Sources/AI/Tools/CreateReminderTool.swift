@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that creates a scheduled reminder notification.
-final class CreateReminderTool: AgentTool, @unchecked Sendable {
+final class CreateReminderTool: AgentTool {
     let name = "create_reminder"
     let description = """
     Create a reminder that will fire a macOS notification at the scheduled time. \

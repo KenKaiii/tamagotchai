@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// Agent tool that deletes a scheduled job by name.
-final class DeleteScheduleTool: AgentTool, @unchecked Sendable {
+final class DeleteScheduleTool: AgentTool {
     let name = "delete_schedule"
     let description = "Delete a scheduled reminder or routine by name."
 

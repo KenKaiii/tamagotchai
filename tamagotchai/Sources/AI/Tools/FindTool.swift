@@ -11,7 +11,7 @@ private struct ToolError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-final class FindTool: AgentTool, @unchecked Sendable {
+final class FindTool: AgentTool {
     let name = "find"
     let description = "Find files matching a glob pattern. Returns sorted file paths, max 100 results."
 

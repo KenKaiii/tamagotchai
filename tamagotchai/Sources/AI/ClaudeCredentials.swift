@@ -28,7 +28,7 @@ enum ClaudeCredentials {
     private static let keychainService = "com.unstablemind.tamagotchai"
     private static let keychainAccount = "encryption-key"
 
-    /// Retrieves or generates the encryption key from the macOS Keychain.
+    // Retrieves or generates the encryption key from the macOS Keychain.
     // swiftlint:disable:next modifier_order
     private nonisolated(unsafe) static var encryptionKey: SymmetricKey = {
         if let existingKey = loadKeyFromKeychain() {

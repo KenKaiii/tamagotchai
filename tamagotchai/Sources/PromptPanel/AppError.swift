@@ -80,9 +80,11 @@ enum AppError {
             switch serviceError {
             case .notLoggedIn:
                 return .notConnected
-            case let .apiError(statusCode):
+            case let .apiError(statusCode, body):
                 switch statusCode {
                 case 429:
+                    return .overloaded
+                case 529 where body.contains("overloaded"):
                     return .overloaded
                 case 401, 403:
                     return .authFailed

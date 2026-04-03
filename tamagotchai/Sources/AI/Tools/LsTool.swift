@@ -11,7 +11,7 @@ private struct ToolError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-final class LsTool: AgentTool, @unchecked Sendable {
+final class LsTool: AgentTool {
     let name = "ls"
     let description = "List directory contents with file types and sizes."
 

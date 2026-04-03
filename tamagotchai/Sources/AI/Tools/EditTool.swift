@@ -6,7 +6,7 @@ private let logger = Logger(
     category: "tool.edit"
 )
 
-final class EditTool: AgentTool, @unchecked Sendable {
+final class EditTool: AgentTool {
     let name = "edit"
     let description = "Replace a specific text string in a file. The old_text must uniquely match exactly one location."
     let workingDirectory: String
@@ -37,6 +37,7 @@ final class EditTool: AgentTool, @unchecked Sendable {
         case fileNotReadable(String)
         case notFound
         case multipleMatches(Int)
+        case encodingFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -48,6 +49,8 @@ final class EditTool: AgentTool, @unchecked Sendable {
                 "old_text not found in file"
             case let .multipleMatches(count):
                 "old_text matches \(count) locations — must be unique"
+            case let .encodingFailed(path):
+                "Could not encode modified content as UTF-8 for file at \(path)"
             }
         }
     }
@@ -103,7 +106,8 @@ final class EditTool: AgentTool, @unchecked Sendable {
         let modified = content.replacingOccurrences(of: oldText, with: newText, range: content.range(of: oldText))
 
         guard let outData = modified.data(using: .utf8) else {
-            throw ToolError.fileNotReadable(absolutePath)
+            logger.error("UTF-8 encoding failed for modified content: \(absolutePath, privacy: .public)")
+            throw ToolError.encodingFailed(absolutePath)
         }
         try outData.write(to: fileURL)
 

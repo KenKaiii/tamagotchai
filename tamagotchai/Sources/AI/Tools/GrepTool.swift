@@ -11,7 +11,7 @@ private struct ToolError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-final class GrepTool: AgentTool, @unchecked Sendable {
+final class GrepTool: AgentTool {
     let name = "grep"
     let description = "Search file contents using regex. Returns filepath:line_number:content for matches."
 

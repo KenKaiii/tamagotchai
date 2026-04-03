@@ -7,11 +7,12 @@ private let panelLogger = Logger(
     category: "panel"
 )
 
-/// A borderless, floating NSPanel that mimics macOS Spotlight's window behavior.
-/// - Appears centered on the active screen
-/// - Floats above all windows
-/// - Dismisses when focus is lost or Escape is pressed
-/// - Grows downward from a fixed top edge when content expands
+// A borderless, floating NSPanel that mimics macOS Spotlight's window behavior.
+// - Appears centered on the active screen
+// - Floats above all windows
+// - Dismisses when focus is lost or Escape is pressed
+// - Grows downward from a fixed top edge when content expands
+// swiftlint:disable:next type_body_length
 final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -60,8 +61,8 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Timer that toggles the cursor blink state.
     private var cursorBlinkTimer: Timer?
 
-    /// CVDisplayLink that drives the typing animation in sync with the screen refresh rate.
-    private var displayLink: CVDisplayLink?
+    /// Display link that drives the typing animation in sync with the screen refresh rate.
+    private var displayLink: CADisplayLink?
 
     /// Timestamp of the last display link frame (for calculating elapsed time).
     private var lastFrameTime: CFTimeInterval = 0
@@ -895,28 +896,25 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         return 40
     }
 
-    /// Starts a CVDisplayLink that drives the typing animation in sync with the display refresh rate.
+    // Starts a display link that drives the typing animation in sync with the display refresh rate.
     private func startDisplayLink() {
         stopDisplayLink()
         lastFrameTime = CACurrentMediaTime()
         lastFullRenderTime = lastFrameTime
-        var link: CVDisplayLink?
-        CVDisplayLinkCreateWithActiveCGDisplays(&link)
-        guard let link else { return }
+        guard let view = contentView else { return }
+        let link = view.displayLink(target: self, selector: #selector(displayLinkCallback))
+        link.add(to: .main, forMode: .common)
         displayLink = link
-        CVDisplayLinkSetOutputHandler(link) { [weak self] _, _, _, _, _ in
-            DispatchQueue.main.async { self?.displayLinkFired() }
-            return kCVReturnSuccess
-        }
-        CVDisplayLinkStart(link)
         startCursorBlink()
     }
 
-    /// Stops and releases the CVDisplayLink.
+    @objc private func displayLinkCallback() {
+        displayLinkFired()
+    }
+
+    // Stops and releases the display link.
     private func stopDisplayLink() {
-        if let link = displayLink, CVDisplayLinkIsRunning(link) {
-            CVDisplayLinkStop(link)
-        }
+        displayLink?.invalidate()
         displayLink = nil
     }
 
@@ -926,8 +924,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         cursorBlinkTimer?.invalidate()
         cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self else { return }
-            cursorVisible.toggle()
-            renderDisplayedMarkdown()
+            MainActor.assumeIsolated {
+                self.cursorVisible.toggle()
+                self.renderDisplayedMarkdown()
+            }
         }
         RunLoop.main.add(cursorBlinkTimer!, forMode: .common)
     }

@@ -170,11 +170,12 @@ final class ScheduleStore {
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error {
-                logger.error("Failed to deliver notification: \(error.localizedDescription)")
-            } else {
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().add(request)
                 logger.info("Delivered reminder notification for '\(job.name)'")
+            } catch {
+                logger.error("Failed to deliver notification: \(error.localizedDescription)")
             }
         }
     }
@@ -199,7 +200,7 @@ final class ScheduleStore {
                 ["role": "user", "content": job.prompt],
             ]
 
-            let collector = ResultCollector()
+            nonisolated(unsafe) var collectedText = ""
             var resultText: String
             do {
                 _ = try await agentLoop.run(
@@ -207,10 +208,10 @@ final class ScheduleStore {
                     systemPrompt: "You are a helpful assistant running a scheduled routine. Be concise."
                 ) { event in
                     if case let .turnComplete(text) = event {
-                        collector.text = text
+                        collectedText = text
                     }
                 }
-                resultText = collector.text
+                resultText = collectedText
             } catch {
                 logger.error("Routine '\(job.name)' failed: \(error.localizedDescription)")
                 resultText = "Routine failed: \(error.localizedDescription)"
@@ -231,10 +232,10 @@ final class ScheduleStore {
                 trigger: nil
             )
 
-            UNUserNotificationCenter.current().add(request) { error in
-                if let error {
-                    logger.error("Failed to deliver routine notification: \(error.localizedDescription)")
-                }
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+            } catch {
+                logger.error("Failed to deliver routine notification: \(error.localizedDescription)")
             }
         }
     }
@@ -311,13 +312,6 @@ final class ScheduleStore {
             logger.error("Failed to save schedules: \(error.localizedDescription)")
         }
     }
-}
-
-// MARK: - Result Collector
-
-/// Thread-safe container for collecting agent loop results across Sendable boundaries.
-private final class ResultCollector: @unchecked Sendable {
-    var text: String = ""
 }
 
 // MARK: - Helpers

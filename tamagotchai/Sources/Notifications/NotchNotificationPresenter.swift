@@ -52,7 +52,7 @@ enum NotchNotificationPresenter {
         showToast(
             icon: "bolt.fill",
             iconColor: .systemTeal,
-            title: "Routine: \(name)",
+            title: name,
             subtitle: result,
             duration: 6
         )
@@ -332,6 +332,7 @@ private final class ToastOverlayView: NSView {
     }
 
     override func mouseDown(with _: NSEvent) {
+        ButtonSound.shared.play()
         NotchNotificationPresenter.handleTap()
     }
 }

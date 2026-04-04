@@ -17,15 +17,18 @@ struct TamagotchaiApp: App {
         // Menu bar presence — the app lives in the menu bar
         MenuBarExtra {
             Button("Open Tamagotchai") {
+                ButtonSound.shared.play()
                 PromptPanelController.shared.toggle()
             }
             .keyboardShortcut(.space, modifiers: [.option])
 
             Button("Permissions…") {
+                ButtonSound.shared.play()
                 PermissionsWindowController.show()
             }
 
             Button("Voice Settings…") {
+                ButtonSound.shared.play()
                 VoiceSettingsController.show()
             }
 
@@ -33,10 +36,12 @@ struct TamagotchaiApp: App {
 
             if isLoggedIn {
                 Button("Claude Account…") {
+                    ButtonSound.shared.play()
                     LoginWindowController.show(isLoggedIn: true) { isLoggedIn = $0 }
                 }
             } else {
                 Button("Login to Claude…") {
+                    ButtonSound.shared.play()
                     LoginWindowController.show(isLoggedIn: false) { isLoggedIn = $0 }
                 }
             }
@@ -45,6 +50,7 @@ struct TamagotchaiApp: App {
             Divider()
 
             Button("Test Notification") {
+                ButtonSound.shared.play()
                 NotchNotificationPresenter.showReminder(
                     name: "Test Reminder",
                     message: "This is a test notification to preview the toast style."
@@ -52,6 +58,7 @@ struct TamagotchaiApp: App {
             }
 
             Button("Reset Onboarding") {
+                ButtonSound.shared.play()
                 OnboardingController.reset()
                 OnboardingController.show()
             }
@@ -60,6 +67,7 @@ struct TamagotchaiApp: App {
             Divider()
 
             Button("Quit") {
+                ButtonSound.shared.play()
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q", modifiers: [.command])

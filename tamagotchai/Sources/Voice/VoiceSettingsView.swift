@@ -175,10 +175,12 @@ struct VoiceSettingsView: View {
             }
             .frame(width: 16, height: 14)
             .onTapGesture {
+                ButtonSound.shared.play()
                 stopPreview()
             }
         } else if isDownloaded, manager.modelDownloaded {
             Button {
+                ButtonSound.shared.play()
                 previewVoice(voice.id)
             } label: {
                 Image(systemName: "play.fill")

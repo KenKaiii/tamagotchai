@@ -133,10 +133,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     }()
 
     /// The session history list shown when the panel opens.
-    /// Tab bar for switching between All / Reminders / Routines.
+    /// Tab bar for switching between Chats / Reminders / Routines.
     private lazy var tabBar: NSSegmentedControl = {
         let control = NSSegmentedControl(
-            labels: ["All", "Reminders", "Routines"],
+            labels: ["Chats", "Reminders", "Routines"],
             trackingMode: .selectOne,
             target: self,
             action: #selector(tabBarChanged(_:))
@@ -439,7 +439,8 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     private let tabBarHeight: CGFloat = 44
 
     @objc private func tabBarChanged(_ sender: NSSegmentedControl) {
-        let tab = SessionTab(rawValue: sender.selectedSegment) ?? .all
+        ButtonSound.shared.play()
+        let tab = SessionTab(rawValue: sender.selectedSegment) ?? .chats
         onTabChanged?(tab)
     }
 
@@ -1221,6 +1222,8 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
 
     /// Shows the session history list with grouped sessions, or an empty state message.
     func showSessionList(_ groups: [(label: String, sessions: [ChatSession])], emptyMessage: String? = nil) {
+        let alreadyVisible = !sessionListView.isHidden
+
         // Reset response area so it doesn't ghost behind the session list
         responseScrollView.isHidden = true
         responseHeightConstraint?.constant = 0
@@ -1250,7 +1253,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             listTargetHeight = min(contentHeight, responseMaxHeight - tabBarHeight)
         }
 
-        sessionListHeightConstraint?.constant = 0
+        // Only reset height to 0 when first showing the list — not on tab switches
+        if !alreadyVisible {
+            sessionListHeightConstraint?.constant = 0
+        }
         dividerContainer.isHidden = false
         tabBarContainer.isHidden = false
         sessionListView.isHidden = false
@@ -1268,7 +1274,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         )
 
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
+            ctx.duration = alreadyVisible ? 0.15 : 0.2
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             ctx.allowsImplicitAnimation = true
             self.sessionListHeightConstraint?.animator().constant = listTargetHeight

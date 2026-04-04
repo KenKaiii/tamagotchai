@@ -72,6 +72,7 @@ final class CodeBlockCopyButton: NSView {
     }
 
     override func mouseDown(with _: NSEvent) {
+        ButtonSound.shared.play()
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(codeString, forType: .string)
 

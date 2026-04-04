@@ -34,8 +34,6 @@ final class ScheduleStore {
 
     private(set) var jobs: [ScheduledJob] = []
     private var pollTimer: Timer?
-    /// Job IDs the user has marked as trusted (skip confirmation).
-    private var trustedJobIDs: Set<UUID> = []
 
     private init() {
         loadFromDisk()
@@ -161,7 +159,7 @@ final class ScheduleStore {
         let reminderMessage = ChatMessage(
             id: UUID(),
             role: .assistant,
-            content: [.text("**Reminder: \(job.name)**\n\n\(job.prompt)")],
+            content: [.text("**\(job.name)**\n\n\(job.prompt)")],
             timestamp: Date()
         )
         let reminderSession = ChatSession(
@@ -203,15 +201,6 @@ final class ScheduleStore {
 
     private func executeRoutine(_ job: ScheduledJob) {
         Task { @MainActor in
-            // Require user confirmation unless the job is trusted.
-            if !trustedJobIDs.contains(job.id) {
-                let confirmed = await showRoutineConfirmation(job)
-                guard confirmed else {
-                    logger.info("User declined routine '\(job.name)'")
-                    return
-                }
-            }
-
             logger.info("Running routine '\(job.name)' with prompt: \(job.prompt.prefix(100))")
 
             let agentLoop = AgentLoop()
@@ -246,7 +235,7 @@ final class ScheduleStore {
             let assistantMsg = ChatMessage(
                 id: UUID(),
                 role: .assistant,
-                content: [.text("**Routine: \(job.name)**\n\n\(resultText)")],
+                content: [.text("**\(job.name)**\n\n\(resultText)")],
                 timestamp: Date()
             )
             let routineSession = ChatSession(
@@ -266,7 +255,7 @@ final class ScheduleStore {
 
             // System notification for Notification Center history
             let content = UNMutableNotificationContent()
-            content.title = "Tamagotchai Routine: \(job.name)"
+            content.title = job.name
             content.body = String(resultText.prefix(256))
             content.sound = .default
 
@@ -281,31 +270,6 @@ final class ScheduleStore {
             } catch {
                 logger.error("Failed to deliver routine notification: \(error.localizedDescription)")
             }
-        }
-    }
-
-    /// Shows a confirmation dialog before executing a routine.
-    /// Returns true if the user approved execution.
-    private func showRoutineConfirmation(_ job: ScheduledJob) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let alert = NSAlert()
-            alert.messageText = "Run Routine: \(job.name)?"
-            alert.informativeText = "Prompt: \(String(job.prompt.prefix(200)))"
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Run")
-            alert.addButton(withTitle: "Cancel")
-            alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = "Always trust this routine"
-
-            let response = alert.runModal()
-            let approved = response == .alertFirstButtonReturn
-
-            if approved, alert.suppressionButton?.state == .on {
-                self.trustedJobIDs.insert(job.id)
-                logger.info("User trusted routine '\(job.name)' — will skip confirmation in future")
-            }
-
-            continuation.resume(returning: approved)
         }
     }
 

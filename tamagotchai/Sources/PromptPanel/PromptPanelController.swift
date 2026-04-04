@@ -212,7 +212,7 @@ final class PromptPanelController {
     /// Handles tab changes in the session list.
     private func handleTabChanged(_ tab: SessionTab) {
         let groups: [(label: String, sessions: [ChatSession])] = switch tab {
-        case .all:
+        case .chats:
             SessionStore.shared.allSessionsGroupedByDate()
         case .reminders:
             SessionStore.shared.sessionsGroupedByDate(type: .reminders)
@@ -221,7 +221,7 @@ final class PromptPanelController {
         }
         if groups.isEmpty {
             let message = switch tab {
-            case .all:
+            case .chats:
                 "No conversations yet. Start chatting with Tama!"
             case .reminders:
                 "No reminders yet. Ask Tama to set one for you."

@@ -2,7 +2,7 @@ import AppKit
 
 /// The active tab filter for the session list.
 enum SessionTab: Int {
-    case all = 0
+    case chats = 0
     case reminders = 1
     case routines = 2
 }
@@ -280,6 +280,7 @@ private final class SessionRowView: NSView {
     }
 
     @objc private func deleteClicked() {
+        ButtonSound.shared.play()
         onDelete?()
     }
 
@@ -319,6 +320,7 @@ private final class SessionRowView: NSView {
         // Don't trigger select if clicking the delete button
         let loc = convert(event.locationInWindow, from: nil)
         if deleteButton.frame.contains(loc) { return }
+        ButtonSound.shared.play()
         super.mouseDown(with: event)
         onSelect?()
     }

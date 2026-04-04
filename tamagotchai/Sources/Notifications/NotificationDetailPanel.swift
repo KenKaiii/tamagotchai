@@ -131,6 +131,7 @@ final class NotificationDetailPanel: NSPanel {
     }
 
     @objc private func closeTapped() {
+        ButtonSound.shared.play()
         orderOut(nil)
         Self.activePanel = nil
     }

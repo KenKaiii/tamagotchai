@@ -84,13 +84,18 @@ enum MenuBarIcon {
 
     // MARK: - Main Draw
 
-    private static func draw(in rect: NSRect, mood: MenuBarMood.Mood, animationFrame: Bool) {
+    static func draw(
+        in rect: NSRect,
+        mood: MenuBarMood.Mood,
+        animationFrame: Bool,
+        color: CGColor = CGColor(gray: 0, alpha: 1)
+    ) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
         let layout = Layout(rect: rect)
 
-        ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-        ctx.setStrokeColor(CGColor(gray: 0, alpha: 1))
+        ctx.setFillColor(color)
+        ctx.setStrokeColor(color)
 
         drawAntenna(ctx: ctx, layout: layout, mood: mood, animationFrame: animationFrame)
         drawHead(ctx: ctx, layout: layout)
@@ -103,8 +108,8 @@ enum MenuBarIcon {
 
         // Restore and add details
         ctx.setBlendMode(.normal)
-        ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-        ctx.setStrokeColor(CGColor(gray: 0, alpha: 1))
+        ctx.setFillColor(color)
+        ctx.setStrokeColor(color)
         drawEyeDetails(ctx: ctx, layout: layout, mood: mood, animationFrame: animationFrame)
         drawAccessories(ctx: ctx, layout: layout, mood: mood, animationFrame: animationFrame)
     }

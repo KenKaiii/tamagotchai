@@ -50,6 +50,11 @@ struct TamagotchaiApp: App {
                     message: "This is a test notification to preview the toast style."
                 )
             }
+
+            Button("Reset Onboarding") {
+                OnboardingController.reset()
+                OnboardingController.show()
+            }
             #endif
 
             Divider()
@@ -74,6 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let isLoggedIn = ClaudeService.shared.isLoggedIn
         let hasAccessibility = PermissionsChecker.shared.isAccessibilityGranted()
         logger.info("App launched — loggedIn: \(isLoggedIn), accessibility: \(hasAccessibility)")
+
+        // Show onboarding on first launch
+        if !OnboardingController.isCompleted {
+            OnboardingController.show()
+        }
+
         // Register global hotkey: ⌥ + Space
         PromptPanelController.shared.register()
 

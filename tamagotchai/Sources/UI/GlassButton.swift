@@ -15,7 +15,10 @@ struct GlassButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            ButtonSound.shared.play()
+            action()
+        } label: {
             Text(title)
                 .font(.system(size: 11, weight: isPrimary ? .semibold : .medium))
                 .foregroundColor(.white.opacity(isPrimary ? 1.0 : 0.85))

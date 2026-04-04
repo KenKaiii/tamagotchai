@@ -54,7 +54,7 @@ final class SessionListView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
-        let docView = NSView()
+        let docView = FlippedDocumentView()
         docView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = docView
         docView.addSubview(contentStack)
@@ -93,9 +93,14 @@ final class SessionListView: NSView {
                 }
             }
         }
+    }
 
-        // Ensure scroll position starts at the top
-        scrollView.documentView?.scroll(.zero)
+    /// Resets scroll position to show the very first item (including section headers).
+    func scrollToTop() {
+        contentStack.layoutSubtreeIfNeeded()
+        scrollView.documentView?.layoutSubtreeIfNeeded()
+        scrollView.contentView.setBoundsOrigin(.zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     // MARK: - Row Construction
@@ -382,4 +387,12 @@ private final class DeleteButtonHoverTracker: NSResponder {
     override func mouseExited(with _: NSEvent) {
         button?.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.14).cgColor
     }
+}
+
+// MARK: - Flipped Document View
+
+/// An NSView with a flipped coordinate system (origin at top-left)
+/// so that scroll views display content from the top down.
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

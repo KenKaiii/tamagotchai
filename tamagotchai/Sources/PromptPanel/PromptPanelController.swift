@@ -15,6 +15,7 @@ final class PromptPanelController {
     private var currentSession: ChatSession?
     private var isVoiceMode = false
     private var isDismissedByAgent = false
+    private var isPanelDismissed = false
     private var activeAgentTask: Task<Void, Never>?
     private var activeStreamTask: Task<Void, Never>?
     private lazy var agentLoop = AgentLoop(
@@ -89,6 +90,7 @@ final class PromptPanelController {
         cancelAllActiveTasks()
 
         isDismissedByAgent = false
+        isPanelDismissed = false
         currentSession = nil
         ensurePanel()
         conversationHistory = []
@@ -169,6 +171,7 @@ final class PromptPanelController {
         }
         newPanel.onDismiss = { [weak self] in
             guard let self else { return }
+            isPanelDismissed = true
             cancelAllActiveTasks()
             isVoiceMode = false
         }
@@ -291,7 +294,7 @@ final class PromptPanelController {
 
     /// Starts voice capture with waveform. User can speak or type — typing cancels voice.
     private func startVoiceCapture() {
-        guard !isDismissedByAgent, let panel, panel.isVisible else { return }
+        guard !isDismissedByAgent, !isPanelDismissed, let panel, panel.isVisible else { return }
         SpeechService.shared.stop()
         isVoiceMode = true
         panel.showVoiceFollowUp()
@@ -425,7 +428,13 @@ final class PromptPanelController {
                 panel?.dismiss()
             } catch is CancellationError {
                 logger.info("Agent task cancelled")
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                logger.info("Agent task cancelled (URLSession)")
             } catch {
+                guard !Task.isCancelled else {
+                    logger.info("Agent task cancelled (post-error)")
+                    return
+                }
                 logger.error("Agent loop error: \(error.localizedDescription)")
                 continuation.finish(throwing: error)
             }
@@ -433,47 +442,68 @@ final class PromptPanelController {
 
         activeStreamTask = Task { @MainActor [weak self] in
             guard let self, let panel else { return }
-
-            // Start streaming TTS session so sentences are spoken as they arrive
-            if speakInline {
-                SpeechService.shared.beginStreaming()
-                MenuBarMood.shared.setActivity(.speaking)
-            } else {
-                MenuBarMood.shared.setActivity(.responding)
-            }
-
-            do {
-                _ = try await panel.streamResponse(stream, userText: userText)
-
-                if speakInline {
-                    await SpeechService.shared.finishStreaming()
-                }
-
-                // Restart voice capture for next prompt
-                startVoiceCapture()
-            } catch is CancellationError {
-                logger.info("Stream task cancelled")
-                if speakInline {
-                    SpeechService.shared.stop()
-                }
-                startVoiceCapture()
-            } catch {
-                logger.error("Stream response error: \(error.localizedDescription)")
-                conversationHistory.removeLast()
-                panel.hideToolIndicator()
-                MenuBarMood.shared.setActivity(.error)
-                let appError = AppError.from(error)
-                panel.showError(
-                    title: appError.title,
-                    message: appError.message,
-                    tint: appError.tint
-                )
-                panel.mascot.setState(.idle)
-                startVoiceCapture()
-            }
-
+            await handleStreamResponse(
+                stream: stream,
+                userText: userText,
+                speakInline: speakInline,
+                panel: panel
+            )
             activeAgentTask = nil
             activeStreamTask = nil
+        }
+    }
+
+    // MARK: - Stream Response Handling
+
+    private func handleStreamResponse(
+        stream: AsyncThrowingStream<String, Error>,
+        userText: String,
+        speakInline: Bool,
+        panel: FloatingPanel
+    ) async {
+        if speakInline {
+            SpeechService.shared.beginStreaming()
+            MenuBarMood.shared.setActivity(.speaking)
+        } else {
+            MenuBarMood.shared.setActivity(.responding)
+        }
+
+        do {
+            _ = try await panel.streamResponse(stream, userText: userText)
+            if speakInline {
+                await SpeechService.shared.finishStreaming()
+            }
+            startVoiceCapture()
+        } catch is CancellationError {
+            logger.info("Stream task cancelled")
+            if speakInline { SpeechService.shared.stop() }
+            startVoiceCapture()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            logger.info("Stream task cancelled (URLSession)")
+            if speakInline { SpeechService.shared.stop() }
+            startVoiceCapture()
+        } catch {
+            // If this task was cancelled (e.g. user interrupted), don't
+            // treat the error as real — a new submit may have already
+            // appended to conversationHistory, so removeLast would
+            // corrupt the wrong message.
+            guard !Task.isCancelled else {
+                logger.info("Stream task cancelled (post-error)")
+                if speakInline { SpeechService.shared.stop() }
+                return
+            }
+            logger.error("Stream response error: \(error.localizedDescription)")
+            conversationHistory.removeLast()
+            panel.hideToolIndicator()
+            MenuBarMood.shared.setActivity(.error)
+            let appError = AppError.from(error)
+            panel.showError(
+                title: appError.title,
+                message: appError.message,
+                tint: appError.tint
+            )
+            panel.mascot.setState(.idle)
+            startVoiceCapture()
         }
     }
 

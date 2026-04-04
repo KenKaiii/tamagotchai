@@ -361,6 +361,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         isMovableByWindowBackground = false
         isMovable = false
         isReleasedWhenClosed = false
+        hidesOnDeactivate = false
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
@@ -473,7 +474,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     // MARK: - Dismiss on focus loss
 
     override func resignKey() {
-        super.resignKey()
+        // Skip super to avoid AppKit's inactive window styling flash before our fade-out.
         dismiss()
     }
 
@@ -1282,6 +1283,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         } completionHandler: {
             MainActor.assumeIsolated { [weak self] in
                 self?.positionMascotOverSpacer()
+                self?.sessionListView.scrollToTop()
             }
         }
 

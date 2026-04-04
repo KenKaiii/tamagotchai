@@ -11,15 +11,18 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
+      DEVELOPER_ID_NAME: ${{ secrets.DEVELOPER_ID_NAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          # List available Xcode versions for debugging
           ls /Applications | grep Xcode
-          # Select latest Xcode that supports Swift tools 6.2+
           sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer || \
           sudo xcode-select --switch /Applications/Xcode_26.2.app/Contents/Developer || \
           sudo xcode-select --switch /Applications/Xcode_26.1.app/Contents/Developer
@@ -27,8 +30,7 @@ jobs:
           swift --version
 
       - name: Install tools
-        run: |
-          brew install xcodegen create-dmg
+        run: brew install xcodegen create-dmg
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -58,8 +60,6 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
       - name: Build app
-        env:
-          DEVELOPER_ID_NAME: ${{ secrets.DEVELOPER_ID_NAME }}
         run: |
           xcodebuild -project Tamagotchai.xcodeproj \
             -scheme Tamagotchai \
@@ -72,25 +72,63 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--options runtime" \
             clean build
 
-      - name: Notarize app
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
+      - name: Deep sign all nested code
         run: |
           APP_PATH="build/Build/Products/Release/Tamagotchai.app"
 
-          # Create zip for notarization
+          # Re-sign all nested frameworks and dylibs with hardened runtime
+          find "$APP_PATH" -type f -perm +111 -o -name "*.dylib" -o -name "*.framework" | while read -r binary; do
+            # Skip directories named .framework, only sign actual binaries
+            if [ -f "$binary" ] && file "$binary" | grep -q "Mach-O"; then
+              echo "Signing: $binary"
+              codesign --force --options runtime --timestamp \
+                --sign "$DEVELOPER_ID_NAME" "$binary" || true
+            fi
+          done
+
+          # Re-sign all .framework bundles (outer wrapper)
+          find "$APP_PATH" -name "*.framework" -type d | while read -r fw; do
+            echo "Signing framework bundle: $fw"
+            codesign --force --options runtime --timestamp \
+              --sign "$DEVELOPER_ID_NAME" "$fw" || true
+          done
+
+          # Finally re-sign the app itself
+          codesign --force --options runtime --timestamp \
+            --sign "$DEVELOPER_ID_NAME" "$APP_PATH"
+
+          # Verify
+          codesign --verify --deep --strict "$APP_PATH"
+          echo "Code signing verification passed"
+
+      - name: Notarize app
+        run: |
+          APP_PATH="build/Build/Products/Release/Tamagotchai.app"
+
           ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/Tamagotchai.zip"
 
-          # Submit for notarization
-          xcrun notarytool submit "$RUNNER_TEMP/Tamagotchai.zip" \
+          # Submit and capture the submission ID
+          SUBMIT_OUTPUT=$(xcrun notarytool submit "$RUNNER_TEMP/Tamagotchai.zip" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$NOTARIZE_PASSWORD" \
-            --wait --timeout 15m
+            --wait --timeout 15m 2>&1) || true
 
-          # Staple the ticket
+          echo "$SUBMIT_OUTPUT"
+
+          # Extract submission ID
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep "id:" | head -1 | awk '{print $NF}')
+
+          # If it failed, fetch the log for debugging
+          if echo "$SUBMIT_OUTPUT" | grep -q "Invalid"; then
+            echo "=== NOTARIZATION LOG ==="
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$NOTARIZE_PASSWORD" || true
+            exit 1
+          fi
+
           xcrun stapler staple "$APP_PATH"
 
       - name: Create DMG
@@ -109,17 +147,16 @@ jobs:
             "Tamagotchai-${GITHUB_REF_NAME}.dmg" \
             "$APP_PATH" || true
 
-          # create-dmg returns 2 on success when --no-internet-enable is used
           if [ ! -f "Tamagotchai-${GITHUB_REF_NAME}.dmg" ]; then
             echo "DMG creation failed"
             exit 1
           fi
 
-          # Notarize the DMG too
+          # Notarize the DMG
           xcrun notarytool submit "Tamagotchai-${GITHUB_REF_NAME}.dmg" \
-            --apple-id "${{ secrets.APPLE_ID }}" \
-            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-            --password "${{ secrets.NOTARIZE_PASSWORD }}" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARIZE_PASSWORD" \
             --wait --timeout 15m
 
           xcrun stapler staple "Tamagotchai-${GITHUB_REF_NAME}.dmg"

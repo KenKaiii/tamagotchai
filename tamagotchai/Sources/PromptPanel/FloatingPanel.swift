@@ -1277,16 +1277,24 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             height: newPanelHeight
         )
 
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = alreadyVisible ? 0.15 : 0.2
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            ctx.allowsImplicitAnimation = true
-            self.sessionListHeightConstraint?.animator().constant = listTargetHeight
-            self.animator().setFrame(newFrame, display: true)
-        } completionHandler: {
-            MainActor.assumeIsolated { [weak self] in
-                self?.positionMascotOverSpacer()
-                self?.sessionListView.scrollToTop()
+        if alreadyVisible {
+            // Instant swap for tab switches — no animation prevents vertical jitter
+            sessionListHeightConstraint?.constant = listTargetHeight
+            setFrame(newFrame, display: true)
+            positionMascotOverSpacer()
+            sessionListView.scrollToTop()
+        } else {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.allowsImplicitAnimation = true
+                self.sessionListHeightConstraint?.animator().constant = listTargetHeight
+                self.animator().setFrame(newFrame, display: true)
+            } completionHandler: {
+                MainActor.assumeIsolated { [weak self] in
+                    self?.positionMascotOverSpacer()
+                    self?.sessionListView.scrollToTop()
+                }
             }
         }
 

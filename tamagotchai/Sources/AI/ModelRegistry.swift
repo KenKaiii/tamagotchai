@@ -3,18 +3,24 @@ import Foundation
 /// Supported AI providers.
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case moonshot
+    case xiaomi
+    case openai
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
         case .moonshot: "Moonshot"
+        case .xiaomi: "Xiaomi"
+        case .openai: "OpenAI"
         }
     }
 
     var description: String {
         switch self {
         case .moonshot: "Kimi K2.5"
+        case .xiaomi: "MiMo-V2-Pro"
+        case .openai: "GPT-5.4, Codex"
         }
     }
 
@@ -22,13 +28,56 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     var baseURL: String {
         switch self {
         case .moonshot: "https://api.moonshot.ai/v1/chat/completions"
+        case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions"
+        case .openai: "https://chatgpt.com/backend-api/codex/responses"
         }
     }
 
-    /// Whether this provider uses OpenAI-compatible API format.
+    /// URL for the models list endpoint, used for API key validation.
+    /// Not used for OAuth providers.
+    var modelsURL: String {
+        switch self {
+        case .moonshot: "https://api.moonshot.ai/v1/models"
+        case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/models"
+        case .openai: ""
+        }
+    }
+
+    /// Whether this provider uses OpenAI-compatible chat completions API format.
     var isOpenAICompatible: Bool {
         switch self {
         case .moonshot: true
+        case .xiaomi: true
+        case .openai: false
+        }
+    }
+
+    /// Whether this provider requires OAuth login instead of API key.
+    var usesOAuth: Bool {
+        switch self {
+        case .moonshot: false
+        case .xiaomi: false
+        case .openai: true
+        }
+    }
+
+    /// Whether this provider uses the Codex /responses API format.
+    var usesCodexAPI: Bool {
+        switch self {
+        case .moonshot: false
+        case .xiaomi: false
+        case .openai: true
+        }
+    }
+
+    /// Whether this provider uses the custom `thinking` parameter.
+    /// All providers should return true here — thinking is disabled by default
+    /// to avoid latency. Only change if the user explicitly opts in.
+    var usesCustomThinkingParam: Bool {
+        switch self {
+        case .moonshot: true
+        case .xiaomi: true
+        case .openai: false
         }
     }
 }
@@ -56,6 +105,51 @@ enum ModelRegistry {
             supportsTools: true,
             supportsThinking: true
         ),
+        ModelInfo(
+            id: "mimo-v2-pro",
+            name: "MiMo-V2-Pro",
+            provider: .xiaomi,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 131_072,
+            supportsTools: true,
+            supportsThinking: true
+        ),
+        ModelInfo(
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            provider: .openai,
+            contextWindow: 1_050_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true
+        ),
+        ModelInfo(
+            id: "gpt-5.4-mini",
+            name: "GPT-5.4 Mini",
+            provider: .openai,
+            contextWindow: 400_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true
+        ),
+        ModelInfo(
+            id: "gpt-5.3-codex",
+            name: "GPT-5.3 Codex",
+            provider: .openai,
+            contextWindow: 400_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true
+        ),
+        ModelInfo(
+            id: "codex-mini-latest",
+            name: "Codex Mini",
+            provider: .openai,
+            contextWindow: 200_000,
+            maxOutputTokens: 100_000,
+            supportsTools: true,
+            supportsThinking: true
+        ),
     ]
 
     /// Returns models for a specific provider.
@@ -68,6 +162,10 @@ enum ModelRegistry {
         switch provider {
         case .moonshot:
             models.first { $0.id == "kimi-k2.5" }!
+        case .xiaomi:
+            models.first { $0.id == "mimo-v2-pro" }!
+        case .openai:
+            models.first { $0.id == "gpt-5.4-mini" }!
         }
     }
 

@@ -7,13 +7,40 @@ private let logger = Logger(
     category: "provider-store"
 )
 
-/// Credential for a single provider — an API key.
+/// Credential for a single provider — API key or OAuth tokens.
 struct ProviderCredential: Codable {
     let accessToken: String
+    let refreshToken: String?
+    let expiresAt: Date?
+    let accountId: String?
+
+    var isExpired: Bool {
+        guard let expiresAt else { return false }
+        return Date() >= expiresAt
+    }
+
+    var isOAuth: Bool {
+        refreshToken != nil
+    }
 
     /// Create from a simple API key.
     static func apiKey(_ key: String) -> ProviderCredential {
-        ProviderCredential(accessToken: key)
+        ProviderCredential(accessToken: key, refreshToken: nil, expiresAt: nil, accountId: nil)
+    }
+
+    /// Create from OAuth token exchange result.
+    static func oauth(
+        accessToken: String,
+        refreshToken: String,
+        expiresAt: Date,
+        accountId: String
+    ) -> ProviderCredential {
+        ProviderCredential(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: expiresAt,
+            accountId: accountId
+        )
     }
 }
 
@@ -65,10 +92,27 @@ final class ProviderStore {
     }
 
     /// Returns the access token for the given provider.
+    /// For OAuth providers, auto-refreshes expired tokens.
     func validAccessToken(for provider: AIProvider) async throws -> String {
         guard let cred = data.credentials[provider.rawValue] else {
             throw ProviderStoreError.noCredentials(provider)
         }
+
+        // Auto-refresh expired OAuth tokens
+        if cred.isOAuth, cred.isExpired, let refreshToken = cred.refreshToken {
+            logger.info("Token expired for \(provider.displayName), refreshing…")
+            let refreshed = try await OpenAIOAuth.shared.refresh(refreshToken: refreshToken)
+            let newCred = ProviderCredential.oauth(
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                accountId: refreshed.accountId
+            )
+            data.credentials[provider.rawValue] = newCred
+            save()
+            return newCred.accessToken
+        }
+
         return cred.accessToken
     }
 
@@ -96,6 +140,37 @@ final class ProviderStore {
     /// Whether any provider has credentials configured.
     var hasAnyCredentials: Bool {
         !data.credentials.isEmpty
+    }
+
+    // MARK: - Validation
+
+    /// Validates an API key by hitting the provider's models endpoint.
+    /// Returns nil on success, or an error message on failure.
+    nonisolated func validateApiKey(_ key: String, for provider: AIProvider) async -> String? {
+        guard let url = URL(string: provider.modelsURL) else {
+            return "Invalid provider URL."
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return "Unexpected response from server."
+            }
+            switch http.statusCode {
+            case 200 ..< 300:
+                return nil
+            case 401, 403:
+                return "Invalid API key. Check and try again."
+            default:
+                return "Validation failed (HTTP \(http.statusCode)). The key may still work — try sending a message."
+            }
+        } catch {
+            return "Couldn't reach \(provider.displayName). Check your internet and try again."
+        }
     }
 
     // MARK: - Persistence

@@ -4,6 +4,7 @@ import AppKit
 enum AppError {
     case overloaded
     case authFailed
+    case subscriptionRequired(String)
     case serverIssue(Int)
     case notConnected
     case timeout
@@ -18,6 +19,8 @@ enum AppError {
             "Server Overloaded"
         case .authFailed:
             "Authentication Failed"
+        case .subscriptionRequired:
+            "Subscription Required"
         case .serverIssue:
             "Server Issue"
         case .notConnected:
@@ -40,6 +43,8 @@ enum AppError {
             "The API server is under heavy load. Try again in a moment."
         case .authFailed:
             "Your session has expired. Check your API key in AI Settings."
+        case let .subscriptionRequired(detail):
+            detail
         case let .serverIssue(code):
             "The API server is experiencing problems (HTTP \(code)). Try again shortly."
         case .notConnected:
@@ -66,7 +71,7 @@ enum AppError {
         switch self {
         case .overloaded, .serverIssue, .streamInterrupted, .unknown, .notConnected:
             .systemRed
-        case .authFailed, .loginFailed:
+        case .authFailed, .loginFailed, .subscriptionRequired:
             .systemOrange
         case .timeout:
             .systemGray
@@ -86,10 +91,21 @@ enum AppError {
             case .notLoggedIn:
                 return .notConnected
             case let .apiError(statusCode, body):
+                let lowerBody = body.lowercased()
+
+                // Detect subscription/billing errors from any provider
+                if Self.isBillingError(statusCode: statusCode, body: lowerBody) {
+                    return .subscriptionRequired(
+                        "This model requires a paid plan. "
+                            + "Check your subscription at your provider's settings, "
+                            + "or switch to a different model in AI Settings."
+                    )
+                }
+
                 switch statusCode {
                 case 429:
                     return .overloaded
-                case 529 where body.contains("overloaded"):
+                case 529 where lowerBody.contains("overloaded"):
                     return .overloaded
                 case 401, 403:
                     return .authFailed
@@ -122,5 +138,29 @@ enum AppError {
         }
 
         return .unknown(error.localizedDescription)
+    }
+
+    /// Detects subscription, billing, or quota errors that indicate a paid plan is needed.
+    private static func isBillingError(statusCode: Int, body: String) -> Bool {
+        // HTTP 402 Payment Required is an explicit billing error
+        if statusCode == 402 { return true }
+
+        let billingKeywords = [
+            "insufficient balance",
+            "no resource package",
+            "quota exceeded",
+            "billing",
+            "recharge",
+            "subscription plan",
+            "does not yet include access",
+            "not supported",
+            "plan does not",
+            "upgrade your plan",
+            "rate limit",
+        ]
+
+        // Only match on 400/403/429 to avoid false positives on unrelated errors
+        guard [400, 403, 429].contains(statusCode) else { return false }
+        return billingKeywords.contains { body.contains($0) }
     }
 }

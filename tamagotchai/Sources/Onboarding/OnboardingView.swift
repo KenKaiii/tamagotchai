@@ -35,8 +35,9 @@ struct OnboardingView: View {
 
     // Login
     @State private var isLoggedIn = ClaudeService.shared.isLoggedIn
-    @State private var loginCode = ""
-    @State private var isLoggingIn = false
+    @State private var apiKeyInputs: [AIProvider: String] = [:]
+    @State private var validatingProvider: AIProvider?
+    @State private var isAuthenticating = false
     @State private var loginError: String?
 
     // Voice
@@ -347,46 +348,92 @@ struct OnboardingView: View {
 
     private var loginStep: some View {
         VStack(spacing: 0) {
-            Text("Connect to Kimi")
+            Text("Connect a Model")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white.opacity(0.95))
                 .padding(.bottom, 8)
 
-            Text("Add your Moonshot API key to enable AI features.")
+            Text("Add an API key for at least one provider.")
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.45))
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 16)
 
-            if isLoggedIn {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connected")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                        Text("API key configured.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.45))
-                    }
-
-                    Spacer()
-
-                    Text("Granted")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.green.opacity(0.9))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.15))
-                        .clipShape(Capsule())
+            VStack(spacing: 8) {
+                ForEach(AIProvider.allCases) { provider in
+                    providerLoginRow(provider)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
+            }
+            .padding(.horizontal, 14)
+
+            if let loginError {
+                Text(loginError)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(2)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.25))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+                    )
+                    .cornerRadius(8)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+            }
+        }
+        .padding(.horizontal, 14)
+        .onChange(of: isLoggedIn) { _, _ in
+            applyMascotState(for: step)
+        }
+    }
+
+    private func providerLoginRow(_ provider: AIProvider) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(provider.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text(provider.description)
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                Spacer()
+                if ProviderStore.shared.hasCredentials(for: provider) {
+                    Text("Connected")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.green.opacity(0.9))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.15))
+                        .cornerRadius(4)
+                }
+            }
+
+            if !ProviderStore.shared.hasCredentials(for: provider) {
+                if provider.usesOAuth {
+                    HStack {
+                        if isAuthenticating {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.7)
+                            Text("Waiting for browser…")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.4))
+                        } else {
+                            GlassButton("Sign in with \(provider.displayName)", isPrimary: true) {
+                                startOAuth(for: provider)
+                            }
+                        }
+                        Spacer()
+                    }
+                } else {
                     HStack(spacing: 8) {
-                        TextField("Paste API key", text: $loginCode)
+                        TextField("Paste API key", text: apiKeyBinding(for: provider))
                             .textFieldStyle(.plain)
-                            .font(.system(size: 12))
+                            .font(.system(size: 11))
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -396,47 +443,90 @@ struct OnboardingView: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
                             )
+                            .disabled(validatingProvider == provider)
 
-                        GlassButton("Add", isPrimary: true) {
-                            submitApiKey()
+                        let key = apiKeyInputs[provider] ?? ""
+                        let isValidating = validatingProvider == provider
+
+                        if isValidating {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.7)
+                                .frame(width: 40)
+                        } else {
+                            GlassButton("Add", isPrimary: true) {
+                                submitApiKey(key, for: provider)
+                            }
+                            .disabled(key.isEmpty)
+                            .opacity(key.isEmpty ? 0.5 : 1)
                         }
-                        .disabled(loginCode.isEmpty)
-                        .opacity(loginCode.isEmpty ? 0.5 : 1)
-                    }
-
-                    if let loginError {
-                        Text(loginError)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(2)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.25))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.orange.opacity(0.45), lineWidth: 1)
-                            )
-                            .cornerRadius(8)
                     }
                 }
-                .padding(.horizontal, 20)
             }
         }
-        .padding(.horizontal, 14)
-        .onChange(of: isLoggedIn) { _, _ in
-            applyMascotState(for: step)
+        .padding(10)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private func apiKeyBinding(for provider: AIProvider) -> Binding<String> {
+        Binding(
+            get: { apiKeyInputs[provider] ?? "" },
+            set: { apiKeyInputs[provider] = $0 }
+        )
+    }
+
+    private func startOAuth(for provider: AIProvider) {
+        loginError = nil
+        isAuthenticating = true
+
+        Task {
+            do {
+                let result = try await OpenAIOAuth.shared.authenticate()
+                let credential = ProviderCredential.oauth(
+                    accessToken: result.accessToken,
+                    refreshToken: result.refreshToken,
+                    expiresAt: result.expiresAt,
+                    accountId: result.accountId
+                )
+                ProviderStore.shared.setCredential(credential, for: provider)
+                let defaultModel = ModelRegistry.defaultModel(for: provider)
+                ProviderStore.shared.setSelectedModel(defaultModel)
+                isLoggedIn = true
+                logger.info("Onboarding OAuth login completed for \(provider.displayName)")
+            } catch {
+                loginError = error.localizedDescription
+            }
+            isAuthenticating = false
         }
     }
 
-    private func submitApiKey() {
-        let key = loginCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-        ProviderStore.shared.setCredential(.apiKey(key), for: .moonshot)
-        let defaultModel = ModelRegistry.defaultModel(for: .moonshot)
-        ProviderStore.shared.setSelectedModel(defaultModel)
-        loginCode = ""
-        isLoggedIn = true
-        logger.info("Onboarding API key added")
+    private func submitApiKey(_ key: String, for provider: AIProvider) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        loginError = nil
+        validatingProvider = provider
+
+        Task {
+            let error = await ProviderStore.shared.validateApiKey(trimmed, for: provider)
+            validatingProvider = nil
+
+            if let error {
+                loginError = error
+                return
+            }
+
+            ProviderStore.shared.setCredential(.apiKey(trimmed), for: provider)
+            let defaultModel = ModelRegistry.defaultModel(for: provider)
+            ProviderStore.shared.setSelectedModel(defaultModel)
+            apiKeyInputs[provider] = nil
+            isLoggedIn = true
+            logger.info("Onboarding API key added for \(provider.displayName)")
+        }
     }
 
     // MARK: - Voice
@@ -562,7 +652,7 @@ struct OnboardingView: View {
                 .lineSpacing(2)
 
             VStack(alignment: .leading, spacing: 6) {
-                setupSummaryRow("Claude", done: isLoggedIn)
+                setupSummaryRow("AI Model", done: isLoggedIn)
                 setupSummaryRow("Accessibility", done: accessibilityGranted)
                 setupSummaryRow("Voice Model", done: kokoro.modelDownloaded && !kokoro.downloadedVoices.isEmpty)
             }

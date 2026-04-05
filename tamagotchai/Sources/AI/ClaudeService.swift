@@ -59,6 +59,16 @@ final class ClaudeService {
         let model = currentModel
         logger.info("sendWithTools — model: \(model.id), messages: \(messages.count), tools: \(tools.count)")
 
+        if model.provider.usesCodexAPI {
+            return try await streamCodexRequest(
+                model: model,
+                messages: messages,
+                tools: tools,
+                systemPrompt: systemPrompt,
+                onEvent: onEvent
+            )
+        }
+
         return try await streamOpenAIRequest(
             model: model,
             messages: messages,
@@ -95,7 +105,60 @@ final class ClaudeService {
         """
     }
 
-    // MARK: - OpenAI-Compatible Streaming (Moonshot)
+    // MARK: - Codex Streaming (OpenAI)
+
+    private func streamCodexRequest(
+        model: ModelInfo,
+        messages: [[String: Any]],
+        tools: [[String: Any]],
+        systemPrompt: String?,
+        onEvent: @escaping @Sendable (StreamEvent) -> Void
+    ) async throws -> ClaudeResponse {
+        let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
+        guard let accountId = ProviderStore.shared.credential(for: model.provider)?.accountId else {
+            throw ClaudeServiceError.notLoggedIn
+        }
+
+        // Build system prompt with dynamic context
+        var fullSystemPrompt = baseSystemPrompt
+        if let extra = systemPrompt {
+            fullSystemPrompt += "\n\n" + extra
+        }
+        fullSystemPrompt += "\n\n" + dynamicContext()
+
+        let request = try CodexRequestBuilder.buildRequest(
+            token: token,
+            accountId: accountId,
+            model: model,
+            messages: messages,
+            tools: tools,
+            systemPrompt: fullSystemPrompt
+        )
+
+        let (bytes, response) = try await streamingSession.bytes(for: request)
+
+        guard let http = response as? HTTPURLResponse,
+              (200 ..< 300).contains(http.statusCode)
+        else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            var bodyData = Data()
+            for try await byte in bytes {
+                bodyData.append(byte)
+                if bodyData.count > 4096 { break }
+            }
+            let body = String(data: bodyData, encoding: .utf8) ?? "<no body>"
+            logger.error("Codex API failed — HTTP \(code): \(body)")
+            throw ClaudeServiceError.apiError(statusCode: code, body: body)
+        }
+
+        let parser = CodexStreamParser(onEvent: onEvent)
+        try await parser.parse(bytes: bytes)
+        let result = parser.buildResponse()
+        onEvent(.response(result))
+        return result
+    }
+
+    // MARK: - OpenAI-Compatible Streaming (Moonshot/Xiaomi)
 
     private func streamOpenAIRequest(
         model: ModelInfo,
@@ -189,9 +252,14 @@ final class ClaudeService {
             body["tools"] = openAITools
         }
 
-        // Moonshot: disable thinking — required when $web_search is in tools
-        if model.provider == .moonshot {
+        // All providers: disable thinking to avoid latency. When adding new providers,
+        // ensure thinking stays disabled unless explicitly opted in by the user.
+        if model.provider.usesCustomThinkingParam {
+            // Moonshot/Xiaomi use a custom "thinking" body parameter
             body["thinking"] = ["type": "disabled"]
+        } else if model.provider == .openai {
+            // OpenAI uses "reasoning_effort" to control thinking
+            body["reasoning_effort"] = "none"
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

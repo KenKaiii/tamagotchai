@@ -13,6 +13,7 @@
 		099956513258275C888D9C17 /* PromptPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D449322E10E6BB23C918E50 /* PromptPanelController.swift */; };
 		0D0119FAD42DE581E87D65C7 /* AgentLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3B330A8C52FA34054BDE60 /* AgentLoop.swift */; };
 		10214286B09B6E0BDFB46202 /* PanelToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47135ABEFCBEDDCBF5BEEA98 /* PanelToolRegistry.swift */; };
+		185C3AD8A80768290FE4A691 /* CodexRequestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8023798389D9A9D1590B6257 /* CodexRequestBuilder.swift */; };
 		1BA865B932634AFFA07CDE4D /* SkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FFDA50AC375F95476A13C6 /* SkeletonView.swift */; };
 		1CFD4BDECF64380DC75A95A1 /* WriteToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A099A5B1D719BDC70D9EB8FA /* WriteToolTests.swift */; };
 		20010341711C692BD019245D /* ToolIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F7A234369898B60D88F2E /* ToolIndicatorView.swift */; };
@@ -82,11 +83,13 @@
 		C1555808F940CFCD9000C257 /* PermissionsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E3EDA27B48F99948A62D34 /* PermissionsWindowController.swift */; };
 		C2623B3ECE718DE32321F874 /* StreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BF415CCE6B24532C86B53B /* StreamParserTests.swift */; };
 		C346142DDA2530F7A15FDCBC /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6EF719041DBAA5054B3CF14 /* AudioWaveformView.swift */; };
+		C40709DC1A581B22D21A49FA /* CodexStreamParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5142F3E33C7D0AAEC59AB06 /* CodexStreamParser.swift */; };
 		CCEACA827686DCAA08534478 /* ButtonSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5FBD1F1B2B2DDFF03909B8 /* ButtonSound.swift */; };
 		CD7DD157F5B33996F7FA5D8E /* FileSystemToolHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7878CFDA4C915D3023570D92 /* FileSystemToolHelpersTests.swift */; };
 		CDA6A7CF8189B49B21D7A64F /* VoiceSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF637C730E241838C7548D72 /* VoiceSettingsController.swift */; };
 		D05DC3925D0CE7AE3CD912DC /* ClaudeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963D29896D050E424A1F4A9A /* ClaudeModels.swift */; };
 		D0F97A57CD9D01B529B04D64 /* NotificationDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B69A845646CCDA7C71882E5 /* NotificationDetailPanel.swift */; };
+		D10FED4920E0E4F0FA65DC67 /* OpenAIOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFF8F95ACD21062695EED5E1 /* OpenAIOAuth.swift */; };
 		D65EDBCEDA29BA38056224D7 /* ListSchedulesTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03764AC97B0A74D6FAFAE57 /* ListSchedulesTool.swift */; };
 		DB6B707EC2B933CEB8DDD5B0 /* DismissTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42F0D8A51D3C989243B5DAF /* DismissTool.swift */; };
 		DD5A4E05EA926EE63BEF164F /* FloatingPanel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C2EACA603F431FB7C2C363 /* FloatingPanel+Presentation.swift */; };
@@ -165,6 +168,7 @@
 		7D5939D90AA79794265711D7 /* CreateReminderTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateReminderTool.swift; sourceTree = "<group>"; };
 		7EBD9C614C124F63F667F904 /* sound-step.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "sound-step.mp3"; sourceTree = "<group>"; };
 		7F3B330A8C52FA34054BDE60 /* AgentLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoop.swift; sourceTree = "<group>"; };
+		8023798389D9A9D1590B6257 /* CodexRequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRequestBuilder.swift; sourceTree = "<group>"; };
 		82766758E7104B49DA4B24D7 /* ModelRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRegistry.swift; sourceTree = "<group>"; };
 		8315F2EE7A5F55D1EA63B379 /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
 		85A1ADE518F5788DF19D46F2 /* GlassButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassButton.swift; sourceTree = "<group>"; };
@@ -210,8 +214,10 @@
 		DDBE40585CD80FD3B2F4C702 /* StreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamParser.swift; sourceTree = "<group>"; };
 		E3B57A17D8297CE0C2848871 /* FindTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindTool.swift; sourceTree = "<group>"; };
 		E403F3F88707440903AFEC16 /* NotchNotificationPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchNotificationPresenter.swift; sourceTree = "<group>"; };
+		E5142F3E33C7D0AAEC59AB06 /* CodexStreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexStreamParser.swift; sourceTree = "<group>"; };
 		E6EF719041DBAA5054B3CF14 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 		E759ECBBE66883138A0117EB /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		EFF8F95ACD21062695EED5E1 /* OpenAIOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIOAuth.swift; sourceTree = "<group>"; };
 		F7E3ED3F618D51F16DF34947 /* ScheduleParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleParser.swift; sourceTree = "<group>"; };
 		F8668277287B1812CF738184 /* WebFetchToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebFetchToolTests.swift; sourceTree = "<group>"; };
 		FFD709153C32070C3FF4661A /* TamagotchaiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TamagotchaiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -458,7 +464,10 @@
 				025B3C45281DE97D0FCB7955 /* ClaudeCredentials.swift */,
 				963D29896D050E424A1F4A9A /* ClaudeModels.swift */,
 				57F4BC561B4564DD9CA624CF /* ClaudeService.swift */,
+				8023798389D9A9D1590B6257 /* CodexRequestBuilder.swift */,
+				E5142F3E33C7D0AAEC59AB06 /* CodexStreamParser.swift */,
 				82766758E7104B49DA4B24D7 /* ModelRegistry.swift */,
+				EFF8F95ACD21062695EED5E1 /* OpenAIOAuth.swift */,
 				C3AFA98BF2BAE5C9B24A7B0B /* OpenAIStreamParser.swift */,
 				AB8ADEC275B0BC634CD49491 /* ProviderStore.swift */,
 				DDBE40585CD80FD3B2F4C702 /* StreamParser.swift */,
@@ -706,6 +715,8 @@
 				36FEE5A671F3365E4E86A91C /* ClipboardHistoryView.swift in Sources */,
 				9A4FE4A29DB8547B21F82A67 /* ClipboardMonitor.swift in Sources */,
 				E65D02C2C48278BC98889A96 /* ClipboardStore.swift in Sources */,
+				185C3AD8A80768290FE4A691 /* CodexRequestBuilder.swift in Sources */,
+				C40709DC1A581B22D21A49FA /* CodexStreamParser.swift in Sources */,
 				901334BE0CF6E826E9BB12FB /* CreateReminderTool.swift in Sources */,
 				7A6992BC438DDC623751B16B /* CreateRoutineTool.swift in Sources */,
 				A98305F6A26FB76A56F2E811 /* DeleteScheduleTool.swift in Sources */,
@@ -737,6 +748,7 @@
 				D0F97A57CD9D01B529B04D64 /* NotificationDetailPanel.swift in Sources */,
 				5992569D4CFF51601B07116C /* OnboardingController.swift in Sources */,
 				7DB9FC5C51C07B7E936514DE /* OnboardingView.swift in Sources */,
+				D10FED4920E0E4F0FA65DC67 /* OpenAIOAuth.swift in Sources */,
 				24338B8CC64768AD67398443 /* OpenAIStreamParser.swift in Sources */,
 				A105647F2FA2573F43DBD388 /* PanelHelperViews.swift in Sources */,
 				520AB2F0E22BEAC49A0C0A89 /* PanelTool.swift in Sources */,

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct LoginView: View {
     @State private var apiKeyInputs: [AIProvider: String] = [:]
+    @State private var validatingProvider: AIProvider?
+    @State private var isAuthenticating = false
     @State private var errorMessage: String?
     @State private var selectedModelId: String
 
@@ -146,6 +148,8 @@ struct LoginView: View {
 
             if ProviderStore.shared.hasCredentials(for: provider) {
                 connectedRow(provider)
+            } else if provider.usesOAuth {
+                oauthRow(provider)
             } else {
                 addKeyRow(provider)
             }
@@ -171,15 +175,33 @@ struct LoginView: View {
 
     private func connectedRow(_ provider: AIProvider) -> some View {
         HStack {
-            Text("API key configured")
+            Text(provider.usesOAuth ? "Signed in" : "API key configured")
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.4))
             Spacer()
-            GlassButton("Remove") {
+            GlassButton(provider.usesOAuth ? "Sign Out" : "Remove") {
                 ProviderStore.shared.removeCredential(for: provider)
                 onLoginStateChanged(ProviderStore.shared.hasAnyCredentials)
                 selectedModelId = ProviderStore.shared.selectedModel.id
             }
+        }
+    }
+
+    private func oauthRow(_ provider: AIProvider) -> some View {
+        HStack {
+            if isAuthenticating {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+                Text("Waiting for browser…")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.4))
+            } else {
+                GlassButton("Sign in with \(provider.displayName)", isPrimary: true) {
+                    startOAuth(for: provider)
+                }
+            }
+            Spacer()
         }
     }
 
@@ -197,13 +219,23 @@ struct LoginView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
+                .disabled(validatingProvider == provider)
 
             let key = apiKeyInputs[provider] ?? ""
-            GlassButton("Add", isPrimary: true) {
-                addApiKey(key, for: provider)
+            let isValidating = validatingProvider == provider
+
+            if isValidating {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+                    .frame(width: 40)
+            } else {
+                GlassButton("Add", isPrimary: true) {
+                    addApiKey(key, for: provider)
+                }
+                .disabled(key.isEmpty)
+                .opacity(key.isEmpty ? 0.5 : 1)
             }
-            .disabled(key.isEmpty)
-            .opacity(key.isEmpty ? 0.5 : 1)
         }
     }
 
@@ -235,18 +267,60 @@ struct LoginView: View {
         )
     }
 
+    private func startOAuth(for provider: AIProvider) {
+        errorMessage = nil
+        isAuthenticating = true
+
+        Task {
+            do {
+                let result = try await OpenAIOAuth.shared.authenticate()
+                let credential = ProviderCredential.oauth(
+                    accessToken: result.accessToken,
+                    refreshToken: result.refreshToken,
+                    expiresAt: result.expiresAt,
+                    accountId: result.accountId
+                )
+                ProviderStore.shared.setCredential(credential, for: provider)
+
+                let available = ModelRegistry.availableModels()
+                if !available.contains(where: { $0.id == selectedModelId }) {
+                    let defaultModel = ModelRegistry.defaultModel(for: provider)
+                    selectedModelId = defaultModel.id
+                    ProviderStore.shared.setSelectedModel(defaultModel)
+                }
+
+                onLoginStateChanged(true)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isAuthenticating = false
+        }
+    }
+
     private func addApiKey(_ key: String, for provider: AIProvider) {
         errorMessage = nil
-        ProviderStore.shared.setCredential(.apiKey(key), for: provider)
-        apiKeyInputs[provider] = nil
+        validatingProvider = provider
 
-        let available = ModelRegistry.availableModels()
-        if !available.contains(where: { $0.id == selectedModelId }) {
-            let defaultModel = ModelRegistry.defaultModel(for: provider)
-            selectedModelId = defaultModel.id
-            ProviderStore.shared.setSelectedModel(defaultModel)
+        Task {
+            let error = await ProviderStore.shared.validateApiKey(key, for: provider)
+            validatingProvider = nil
+
+            if let error {
+                errorMessage = error
+                return
+            }
+
+            ProviderStore.shared.setCredential(.apiKey(key), for: provider)
+            apiKeyInputs[provider] = nil
+
+            let available = ModelRegistry.availableModels()
+            if !available.contains(where: { $0.id == selectedModelId }) {
+                let defaultModel = ModelRegistry.defaultModel(for: provider)
+                selectedModelId = defaultModel.id
+                ProviderStore.shared.setSelectedModel(defaultModel)
+            }
+
+            onLoginStateChanged(true)
         }
-
-        onLoginStateChanged(true)
     }
 }

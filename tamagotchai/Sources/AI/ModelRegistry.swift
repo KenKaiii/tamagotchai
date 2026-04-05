@@ -5,6 +5,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case moonshot
     case xiaomi
     case openai
+    case minimax
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Moonshot"
         case .xiaomi: "Xiaomi"
         case .openai: "OpenAI"
+        case .minimax: "MiniMax"
         }
     }
 
@@ -21,6 +23,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Kimi K2.5"
         case .xiaomi: "MiMo-V2-Pro"
         case .openai: "GPT-5.4, Codex"
+        case .minimax: "MiniMax M2.7"
         }
     }
 
@@ -30,6 +33,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/chat/completions"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions"
         case .openai: "https://chatgpt.com/backend-api/codex/responses"
+        case .minimax: "https://api.minimax.io/anthropic/v1/messages"
         }
     }
 
@@ -40,6 +44,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/models"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/models"
         case .openai: ""
+        case .minimax: "https://api.minimax.io/anthropic/v1/models"
         }
     }
 
@@ -49,6 +54,15 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: true
         case .openai: false
+        case .minimax: false
+        }
+    }
+
+    /// Whether this provider uses Anthropic-compatible API format.
+    var usesAnthropicAPI: Bool {
+        switch self {
+        case .minimax: true
+        case .moonshot, .xiaomi, .openai: false
         }
     }
 
@@ -58,6 +72,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .minimax: false
         }
     }
 
@@ -67,6 +82,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .minimax: false
         }
     }
 
@@ -78,6 +94,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: true
         case .openai: false
+        case .minimax: false
         }
     }
 }
@@ -150,6 +167,24 @@ enum ModelRegistry {
             supportsTools: true,
             supportsThinking: true
         ),
+        ModelInfo(
+            id: "MiniMax-M2.7",
+            name: "MiniMax M2.7",
+            provider: .minimax,
+            contextWindow: 204_800,
+            maxOutputTokens: 131_072,
+            supportsTools: true,
+            supportsThinking: true
+        ),
+        ModelInfo(
+            id: "MiniMax-M2.7-highspeed",
+            name: "MiniMax M2.7 Highspeed",
+            provider: .minimax,
+            contextWindow: 204_800,
+            maxOutputTokens: 131_072,
+            supportsTools: true,
+            supportsThinking: true
+        ),
     ]
 
     /// Returns models for a specific provider.
@@ -166,6 +201,8 @@ enum ModelRegistry {
             models.first { $0.id == "mimo-v2-pro" }!
         case .openai:
             models.first { $0.id == "gpt-5.4-mini" }!
+        case .minimax:
+            models.first { $0.id == "MiniMax-M2.7" }!
         }
     }
 

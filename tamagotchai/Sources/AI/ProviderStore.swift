@@ -144,9 +144,18 @@ final class ProviderStore {
 
     // MARK: - Validation
 
-    /// Validates an API key by hitting the provider's models endpoint.
+    /// Validates an API key by making a lightweight request to the provider.
     /// Returns nil on success, or an error message on failure.
     nonisolated func validateApiKey(_ key: String, for provider: AIProvider) async -> String? {
+        if provider.usesAnthropicAPI {
+            return await validateAnthropicKey(key, for: provider)
+        }
+        return await validateOpenAIKey(key, for: provider)
+    }
+
+    // swiftlint:disable modifier_order
+    /// Validate via GET /models for OpenAI-compatible providers.
+    private nonisolated func validateOpenAIKey(_ key: String, for provider: AIProvider) async -> String? {
         guard let url = URL(string: provider.modelsURL) else {
             return "Invalid provider URL."
         }
@@ -172,6 +181,46 @@ final class ProviderStore {
             return "Couldn't reach \(provider.displayName). Check your internet and try again."
         }
     }
+
+    /// Validate via a minimal POST /messages for Anthropic-compatible providers (e.g. MiniMax).
+    private nonisolated func validateAnthropicKey(_ key: String, for provider: AIProvider) async -> String? {
+        guard let url = URL(string: provider.baseURL) else {
+            return "Invalid provider URL."
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(key, forHTTPHeaderField: "x-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.timeoutInterval = 10
+
+        // Send a minimal request with max_tokens=1 to validate the key cheaply
+        let body: [String: Any] = [
+            "model": ModelRegistry.defaultModel(for: provider).id,
+            "max_tokens": 1,
+            "messages": [["role": "user", "content": "hi"]],
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return "Unexpected response from server."
+            }
+            switch http.statusCode {
+            case 200 ..< 300:
+                return nil
+            case 401, 403:
+                return "Invalid API key. Check and try again."
+            default:
+                return nil // Non-auth errors mean the key itself is valid
+            }
+        } catch {
+            return "Couldn't reach \(provider.displayName). Check your internet and try again."
+        }
+    }
+
+    // swiftlint:enable modifier_order
 
     // MARK: - Persistence
 

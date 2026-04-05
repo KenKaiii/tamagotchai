@@ -69,6 +69,16 @@ final class ClaudeService {
             )
         }
 
+        if model.provider.usesAnthropicAPI {
+            return try await streamAnthropicRequest(
+                model: model,
+                messages: messages,
+                tools: tools,
+                systemPrompt: systemPrompt,
+                onEvent: onEvent
+            )
+        }
+
         return try await streamOpenAIRequest(
             model: model,
             messages: messages,
@@ -156,6 +166,87 @@ final class ClaudeService {
         let result = parser.buildResponse()
         onEvent(.response(result))
         return result
+    }
+
+    // MARK: - Anthropic-Compatible Streaming (MiniMax)
+
+    private func streamAnthropicRequest(
+        model: ModelInfo,
+        messages: [[String: Any]],
+        tools: [[String: Any]],
+        systemPrompt: String?,
+        onEvent: @escaping @Sendable (StreamEvent) -> Void
+    ) async throws -> ClaudeResponse {
+        let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
+        let request = try buildAnthropicRequest(
+            token: token,
+            model: model,
+            messages: messages,
+            tools: tools,
+            systemPrompt: systemPrompt
+        )
+
+        let (bytes, response) = try await streamingSession.bytes(for: request)
+
+        guard let http = response as? HTTPURLResponse,
+              (200 ..< 300).contains(http.statusCode)
+        else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            var bodyData = Data()
+            for try await byte in bytes {
+                bodyData.append(byte)
+                if bodyData.count > 4096 { break }
+            }
+            let body = String(data: bodyData, encoding: .utf8) ?? "<no body>"
+            logger.error("Anthropic API failed — HTTP \(code): \(body)")
+            throw ClaudeServiceError.apiError(statusCode: code, body: body)
+        }
+
+        let parser = StreamParser(onEvent: onEvent)
+        try await parser.parse(bytes: bytes)
+        let result = parser.buildResponse()
+        onEvent(.response(result))
+        return result
+    }
+
+    private func buildAnthropicRequest(
+        token: String,
+        model: ModelInfo,
+        messages: [[String: Any]],
+        tools: [[String: Any]]?,
+        systemPrompt: String?
+    ) throws -> URLRequest {
+        let url = URL(string: model.provider.baseURL)!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "x-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue("tamagotchai/1.0", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 120
+
+        // Build system prompt with dynamic context
+        var fullSystemPrompt = baseSystemPrompt
+        if let extra = systemPrompt {
+            fullSystemPrompt += "\n\n" + extra
+        }
+        fullSystemPrompt += "\n\n" + dynamicContext()
+
+        var body: [String: Any] = [
+            "model": model.id,
+            "max_tokens": model.maxOutputTokens,
+            "stream": true,
+            "system": fullSystemPrompt,
+            "messages": messages,
+        ]
+
+        // Add tools if present (Anthropic native format — no conversion needed)
+        if let tools, !tools.isEmpty {
+            body["tools"] = tools
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
     }
 
     // MARK: - OpenAI-Compatible Streaming (Moonshot/Xiaomi)

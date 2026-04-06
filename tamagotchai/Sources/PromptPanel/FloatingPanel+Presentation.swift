@@ -310,9 +310,12 @@ extension FloatingPanel {
         setFrame(panelFrame, display: true)
 
         alphaValue = 0
-        makeKeyAndOrderFront(nil)
         NSApp.activate()
-        makeFirstResponder(inputField)
+        makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            makeFirstResponder(inputField)
+        }
 
         // Position mascot child window over the spacer
         mascot.window.alphaValue = 0

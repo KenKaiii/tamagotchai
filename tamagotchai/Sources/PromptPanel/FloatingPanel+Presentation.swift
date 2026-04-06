@@ -302,7 +302,10 @@ extension FloatingPanel {
         let screenFrame = screen.visibleFrame
 
         let originX = screenFrame.midX - panelWidth / 2
-        topY = screenFrame.midY + screenFrame.height * 0.15
+        // Position so the fully-expanded panel (input + divider + tab bar + response)
+        // would be vertically centered on screen. The panel grows downward from topY.
+        let fullExpandedHeight = inputHeight + 1 + tabBarHeight + responseMaxHeight
+        topY = screenFrame.midY + fullExpandedHeight / 2
 
         let panelFrame = NSRect(
             x: originX,

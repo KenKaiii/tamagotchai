@@ -39,6 +39,7 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
 
     private enum SearchEngine: String, CaseIterable {
         case duckDuckGo = "DuckDuckGo"
+        case duckDuckGoLite = "DuckDuckGo Lite"
         case brave = "Brave"
         case google = "Google"
     }
@@ -113,16 +114,21 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
     }
 
     private func searchWith(engine: SearchEngine, query: String, maxResults: Int) async throws -> [SearchResult] {
-        let (url, headers) = buildRequest(engine: engine, query: query)
+        let searchReq = buildRequest(engine: engine, query: query)
 
-        guard let requestURL = URL(string: url) else {
+        guard let requestURL = URL(string: searchReq.url) else {
             throw WebSearchError.invalidURL
         }
 
         var request = URLRequest(url: requestURL)
+        request.httpMethod = searchReq.httpMethod
+        request.httpBody = searchReq.httpBody
         request.timeoutInterval = 15
-        for (key, value) in headers {
+        for (key, value) in searchReq.headers {
             request.setValue(value, forHTTPHeaderField: key)
+        }
+        if searchReq.httpBody != nil {
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         }
 
         let (data, statusCode) = try await fetchWithRetry(request: request)
@@ -139,6 +145,8 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
         var results: [SearchResult] = switch engine {
         case .duckDuckGo:
             parseDDGResults(html: html)
+        case .duckDuckGoLite:
+            parseDDGLiteResults(html: html)
         case .brave:
             parseBraveResults(html: html)
         case .google:
@@ -154,7 +162,21 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
 
     // MARK: - Request Building
 
-    private func buildRequest(engine: SearchEngine, query: String) -> (url: String, headers: [String: String]) {
+    private struct SearchRequest {
+        let url: String
+        let headers: [String: String]
+        let httpMethod: String
+        let httpBody: Data?
+
+        init(url: String, headers: [String: String], httpMethod: String = "GET", httpBody: Data? = nil) {
+            self.url = url
+            self.headers = headers
+            self.httpMethod = httpMethod
+            self.httpBody = httpBody
+        }
+    }
+
+    private func buildRequest(engine: SearchEngine, query: String) -> SearchRequest {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
         let ua = Self.userAgents.randomElement()!
 
@@ -164,18 +186,34 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
             "Accept-Language": "en-US,en;q=0.9",
         ]
 
-        let url: String
         switch engine {
         case .duckDuckGo:
-            url = "https://html.duckduckgo.com/html/?q=\(encoded)"
-        case .brave:
-            url = "https://search.brave.com/search?q=\(encoded)&source=web"
+            return SearchRequest(
+                url: "https://html.duckduckgo.com/html/?q=\(encoded)",
+                headers: headers
+            )
+        case .duckDuckGoLite:
             headers["Accept"] = "text/html"
+            headers["Referer"] = "https://lite.duckduckgo.com/"
+            let formBody = Data("q=\(encoded)".utf8)
+            return SearchRequest(
+                url: "https://lite.duckduckgo.com/lite/",
+                headers: headers,
+                httpMethod: "POST",
+                httpBody: formBody
+            )
+        case .brave:
+            headers["Accept"] = "text/html"
+            return SearchRequest(
+                url: "https://search.brave.com/search?q=\(encoded)&source=web",
+                headers: headers
+            )
         case .google:
-            url = "https://www.google.com/search?q=\(encoded)&hl=en"
+            return SearchRequest(
+                url: "https://www.google.com/search?q=\(encoded)&hl=en",
+                headers: headers
+            )
         }
-
-        return (url, headers)
     }
 
     // MARK: - Fetch with Retry
@@ -288,6 +326,77 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
             return "https:" + rawURL
         }
         return rawURL
+    }
+
+    // MARK: - DuckDuckGo Lite Parser
+
+    private func parseDDGLiteResults(html: String) -> [SearchResult] {
+        var results: [SearchResult] = []
+
+        // DDG Lite uses table rows. Result links are in <tr> with <a href="http...">Title</a>.
+        // Snippets follow in the next <tr> sibling inside <td class='result-snippet'>.
+        // Note: DDG Lite uses single-quoted attributes, so patterns accept both ' and ".
+        let rowPattern = #"<tr>.*?</tr>"#
+        guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: .dotMatchesLineSeparators)
+        else { return [] }
+
+        let range = NSRange(html.startIndex ..< html.endIndex, in: html)
+        let rowMatches = rowRegex.matches(in: html, range: range)
+
+        // Result links have class='result-link' — use a two-step approach:
+        // first match any <a> with an http(s) href, then filter for result-link class.
+        let linkPattern = #"<a[^>]*href=["'](https?://[^"']+)["'][^>]*>(.*?)</a>"#
+        let snippetPattern = #"<td[^>]*class=["'][^"']*result-snippet[^"']*["'][^>]*>(.*?)</td>"#
+        guard let linkRegex = try? NSRegularExpression(pattern: linkPattern, options: .dotMatchesLineSeparators),
+              let snippetRegex = try? NSRegularExpression(pattern: snippetPattern, options: .dotMatchesLineSeparators)
+        else { return [] }
+
+        var pendingResult: (title: String, url: String)?
+
+        for rowMatch in rowMatches {
+            guard let rowRange = Range(rowMatch.range, in: html) else { continue }
+            let rowHTML = String(html[rowRange])
+            let rowNSRange = NSRange(rowHTML.startIndex ..< rowHTML.endIndex, in: rowHTML)
+
+            // Check if this row has a result link (must have class='result-link' to skip zero-click info)
+            if rowHTML.contains("result-link"),
+               let linkMatch = linkRegex.firstMatch(in: rowHTML, range: rowNSRange),
+               let urlRange = Range(linkMatch.range(at: 1), in: rowHTML),
+               let titleRange = Range(linkMatch.range(at: 2), in: rowHTML)
+            {
+                let url = unwrapDDGRedirect(rawURL: String(rowHTML[urlRange]))
+                let title = cleanHTML(String(rowHTML[titleRange]))
+
+                // Skip DDG ad URLs
+                if url.contains("duckduckgo.com/y.js") || url.contains("ad_provider=") {
+                    continue
+                }
+
+                // If we had a pending result without a snippet, flush it
+                if let pending = pendingResult {
+                    results.append(SearchResult(title: pending.title, url: pending.url, snippet: ""))
+                }
+                pendingResult = (title: title, url: url)
+                continue
+            }
+
+            // Check if this row has a snippet (belongs to the pending result)
+            if let pending = pendingResult,
+               let snippetMatch = snippetRegex.firstMatch(in: rowHTML, range: rowNSRange),
+               let snippetRange = Range(snippetMatch.range(at: 1), in: rowHTML)
+            {
+                let snippet = cleanHTML(String(rowHTML[snippetRange]))
+                results.append(SearchResult(title: pending.title, url: pending.url, snippet: snippet))
+                pendingResult = nil
+            }
+        }
+
+        // Flush any trailing pending result
+        if let pending = pendingResult {
+            results.append(SearchResult(title: pending.title, url: pending.url, snippet: ""))
+        }
+
+        return results
     }
 
     // MARK: - Brave Parser

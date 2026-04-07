@@ -105,10 +105,27 @@ final class SessionStore {
         sessionsGroupedByDate(type: .chat)
     }
 
+    /// Filters sessions of a given type by query (case-insensitive title match), grouped by date.
+    func searchSessionsGroupedByDate(type: SessionType, query: String) -> [(label: String, sessions: [ChatSession])] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return sessionsGroupedByDate(type: type) }
+
+        let filtered = sessions.filter {
+            $0.sessionType == type && $0.title.lowercased().contains(trimmed)
+        }
+        return groupSessionsByDate(filtered)
+    }
+
     /// Groups sessions of a given type by date: "Today", "This Week", "This Month", "Older".
     func sessionsGroupedByDate(type: SessionType) -> [(label: String, sessions: [ChatSession])] {
         let filtered = sessions.filter { $0.sessionType == type }
-        guard !filtered.isEmpty else { return [] }
+        return groupSessionsByDate(filtered)
+    }
+
+    // MARK: - Grouping
+
+    private func groupSessionsByDate(_ list: [ChatSession]) -> [(label: String, sessions: [ChatSession])] {
+        guard !list.isEmpty else { return [] }
 
         let calendar = Calendar.current
         let now = Date()
@@ -123,7 +140,7 @@ final class SessionStore {
         var thisMonth: [ChatSession] = []
         var older: [ChatSession] = []
 
-        for session in filtered {
+        for session in list {
             if session.updatedAt >= startOfToday {
                 today.append(session)
             } else if session.updatedAt >= startOfWeek {

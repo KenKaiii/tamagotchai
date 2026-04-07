@@ -6,8 +6,22 @@ extension FloatingPanel {
     // MARK: - Session List
 
     /// Shows the session history list with grouped sessions, or an empty state message.
-    func showSessionList(_ groups: [(label: String, sessions: [ChatSession])], emptyMessage: String? = nil) {
+    func showSessionList(
+        _ groups: [(label: String, sessions: [ChatSession])],
+        emptyMessage: String? = nil,
+        searchPlaceholder: String? = nil
+    ) {
         isInsideSession = false
+
+        // Reset input field — use search placeholder for filter tabs, default for chats
+        if let searchPlaceholder {
+            isSessionSearchMode = true
+            inputField.placeholderString = searchPlaceholder
+        } else {
+            isSessionSearchMode = false
+            inputField.placeholderString = "Type or say anything you like…"
+        }
+        inputField.stringValue = ""
 
         // If tab bar is already visible we're switching tabs — use instant swap to prevent jitter
         let alreadyVisible = !sessionListView.isHidden || !tabBarContainer.isHidden
@@ -160,6 +174,10 @@ extension FloatingPanel {
             } else {
                 onToolSearchChanged?(text)
             }
+        } else if isTasksMode, !isInsideTaskDetail {
+            onTaskSearchChanged?(text)
+        } else if isSessionSearchMode {
+            onSessionSearchChanged?(text)
         } else {
             onTextChanged?(text)
         }
@@ -355,7 +373,7 @@ extension FloatingPanel {
         }
 
         // Update input field
-        inputField.placeholderString = "Ask anything…"
+        inputField.placeholderString = "Search tasks..."
         inputField.stringValue = ""
 
         // Reload task list
@@ -417,6 +435,18 @@ extension FloatingPanel {
 
         invalidateShadow()
         makeFirstResponder(inputField)
+    }
+
+    /// Lightweight filter — only reloads the session list data without touching the input field or frame.
+    func filterSessionList(groups: [(label: String, sessions: [ChatSession])], emptyMessage: String? = nil) {
+        sessionListView.reload(groups: groups, emptyMessage: emptyMessage)
+        sessionListView.scrollToTop()
+    }
+
+    /// Lightweight filter — only reloads the task list data without touching the input field or frame.
+    func filterTaskList(groups: [(label: String, taskLists: [TaskList])], emptyMessage: String? = nil) {
+        taskListView.reload(groups: groups, emptyMessage: emptyMessage)
+        taskListView.scrollToTop()
     }
 
     /// Hides the task list (called when switching away from Tasks tab).

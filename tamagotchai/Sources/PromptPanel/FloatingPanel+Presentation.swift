@@ -282,9 +282,10 @@ extension FloatingPanel {
         tabBar.selectTab(0, animated: false)
         suppressHideSessionList = false
 
-        // Reset tools state
+        // Reset tools and search state
         isToolsMode = false
         isInsideTool = false
+        isSessionSearchMode = false
         activeTool = nil
         if let activeToolView {
             mainStack.removeArrangedSubview(activeToolView)

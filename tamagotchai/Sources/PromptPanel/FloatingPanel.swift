@@ -283,6 +283,15 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Called when the input field text changes while in Tools mode.
     var onToolSearchChanged: ((String) -> Void)?
 
+    /// Called when the input field text changes while in Tasks mode.
+    var onTaskSearchChanged: ((String) -> Void)?
+
+    /// Called when the input field text changes while in a session-list search tab (reminders/routines).
+    var onSessionSearchChanged: ((String) -> Void)?
+
+    /// Whether the session list is in search/filter mode (reminders or routines tab, not drilled in).
+    var isSessionSearchMode = false
+
     /// Called when the user selects a task list from the task list.
     var onSelectTaskList: ((TaskList) -> Void)?
 
@@ -595,6 +604,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             // In tools mode, Return does nothing (filtering is live)
             if isToolsMode, !isInsideTool { return true }
+            // In tasks mode (list view), Return does nothing (filtering is live)
+            if isTasksMode, !isInsideTaskDetail { return true }
+            // In session search mode (reminders/routines list), Return does nothing
+            if isSessionSearchMode { return true }
             // Inside a tool, Return is consumed (tool handles its own interaction)
             if isInsideTool { return true }
 

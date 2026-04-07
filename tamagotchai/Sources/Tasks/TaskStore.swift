@@ -100,9 +100,28 @@ final class TaskStore {
         taskLists.first { $0.id == id }
     }
 
+    /// Filters task lists by query, matching against the title and item titles (case-insensitive).
+    /// Returns grouped results by date, or all if the query is empty.
+    func searchGroupedByDate(query: String) -> [(label: String, taskLists: [TaskList])] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return allTaskListsGroupedByDate() }
+
+        let filtered = taskLists.filter { taskList in
+            taskList.title.lowercased().contains(trimmed)
+                || taskList.items.contains { $0.title.lowercased().contains(trimmed) }
+        }
+        return groupByDate(filtered)
+    }
+
     /// Groups task lists by date: "Today", "This Week", "This Month", "Older".
     func allTaskListsGroupedByDate() -> [(label: String, taskLists: [TaskList])] {
-        guard !taskLists.isEmpty else { return [] }
+        groupByDate(taskLists)
+    }
+
+    // MARK: - Grouping
+
+    private func groupByDate(_ lists: [TaskList]) -> [(label: String, taskLists: [TaskList])] {
+        guard !lists.isEmpty else { return [] }
 
         let calendar = Calendar.current
         let now = Date()
@@ -117,7 +136,7 @@ final class TaskStore {
         var thisMonth: [TaskList] = []
         var older: [TaskList] = []
 
-        for taskList in taskLists {
+        for taskList in lists {
             if taskList.updatedAt >= startOfToday {
                 today.append(taskList)
             } else if taskList.updatedAt >= startOfWeek {

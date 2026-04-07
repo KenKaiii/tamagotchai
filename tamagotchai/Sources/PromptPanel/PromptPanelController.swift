@@ -185,6 +185,26 @@ final class PromptPanelController {
             let filtered = PanelToolRegistry.shared.search(query: query)
             self?.panel?.filterToolList(tools: filtered)
         }
+        newPanel.onTaskSearchChanged = { [weak self] query in
+            let groups = TaskStore.shared.searchGroupedByDate(query: query)
+            self?.panel?.filterTaskList(
+                groups: groups,
+                emptyMessage: query.isEmpty
+                    ? "No task lists yet. Ask Tama to create one for you."
+                    : "No tasks found."
+            )
+        }
+        newPanel.onSessionSearchChanged = { [weak self] query in
+            guard let self else { return }
+            let type: SessionType = currentTab == .reminders ? .reminders : .routines
+            let groups = SessionStore.shared.searchSessionsGroupedByDate(type: type, query: query)
+            let emptyMessage = query.isEmpty
+                ? (type == .reminders
+                    ? "No reminders yet. Ask Tama to set one for you."
+                    : "No routines yet. Ask Tama to create one for you.")
+                : "No \(type.rawValue) found."
+            panel?.filterSessionList(groups: groups, emptyMessage: emptyMessage)
+        }
         newPanel.onBackToList = { [weak self] in
             guard let self else { return }
             cancelAllActiveTasks()
@@ -251,15 +271,19 @@ final class PromptPanelController {
 
     /// Handles tab changes in the session list.
     private func handleTabChanged(_ tab: SessionTab) {
-        let wasOnTools = currentTab == .tools
+        let wasSearchTab = currentTab != .chats
         currentTab = tab
 
-        // Tools tab has its own display path — no voice capture
-        if tab == .tools {
+        // All non-chat tabs disable voice
+        if tab != .chats {
             SpeechService.shared.stop()
             VoiceService.shared.stopFollowUpCapture()
             panel?.endVoiceSession()
             isVoiceMode = false
+        }
+
+        // Tools tab has its own display path
+        if tab == .tools {
             panel?.showToolList(tools: PanelToolRegistry.shared.allTools)
             return
         }
@@ -280,35 +304,39 @@ final class PromptPanelController {
         panel?.hideToolList()
         panel?.hideTaskList()
 
-        // Restart voice capture when returning from the Tools tab
-        if wasOnTools {
+        // Restart voice capture when returning to chats from a search tab
+        if tab == .chats, wasSearchTab {
             startVoiceCapture()
         }
 
-        let groups: [(label: String, sessions: [ChatSession])] = switch tab {
+        let (groups, emptyMessage, searchPlaceholder): (
+            [(label: String, sessions: [ChatSession])], String, String?
+        ) = switch tab {
         case .chats:
-            SessionStore.shared.allSessionsGroupedByDate()
+            (
+                SessionStore.shared.allSessionsGroupedByDate(),
+                "No conversations yet. Start chatting with Tama!",
+                nil
+            )
         case .reminders:
-            SessionStore.shared.sessionsGroupedByDate(type: .reminders)
+            (
+                SessionStore.shared.sessionsGroupedByDate(type: .reminders),
+                "No reminders yet. Ask Tama to set one for you.",
+                "Search reminders..."
+            )
         case .routines:
-            SessionStore.shared.sessionsGroupedByDate(type: .routines)
+            (
+                SessionStore.shared.sessionsGroupedByDate(type: .routines),
+                "No routines yet. Ask Tama to create one for you.",
+                "Search routines..."
+            )
         case .tasks, .tools:
-            [] // unreachable — handled above
+            ([], "", nil) // unreachable — handled above
         }
         if groups.isEmpty {
-            let message = switch tab {
-            case .chats:
-                "No conversations yet. Start chatting with Tama!"
-            case .reminders:
-                "No reminders yet. Ask Tama to set one for you."
-            case .routines:
-                "No routines yet. Ask Tama to create one for you."
-            case .tasks, .tools:
-                "" // unreachable
-            }
-            panel?.showSessionList([], emptyMessage: message)
+            panel?.showSessionList([], emptyMessage: emptyMessage, searchPlaceholder: searchPlaceholder)
         } else {
-            panel?.showSessionList(groups)
+            panel?.showSessionList(groups, searchPlaceholder: searchPlaceholder)
         }
     }
 

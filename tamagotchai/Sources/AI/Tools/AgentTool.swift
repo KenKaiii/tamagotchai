@@ -63,6 +63,7 @@ final class ToolRegistry: Sendable {
             FindTool(workingDirectory: cwd),
             GrepTool(workingDirectory: cwd),
             WebFetchTool(),
+            WebSearchTool(),
             CreateReminderTool(),
             CreateRoutineTool(),
             ListSchedulesTool(),

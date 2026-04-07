@@ -84,6 +84,7 @@
 		C2623B3ECE718DE32321F874 /* StreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BF415CCE6B24532C86B53B /* StreamParserTests.swift */; };
 		C346142DDA2530F7A15FDCBC /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6EF719041DBAA5054B3CF14 /* AudioWaveformView.swift */; };
 		C40709DC1A581B22D21A49FA /* CodexStreamParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5142F3E33C7D0AAEC59AB06 /* CodexStreamParser.swift */; };
+		C7ECE8EA11408F6A2F2964F4 /* WebSearchTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E848A755192D224FBF81DD /* WebSearchTool.swift */; };
 		CCEACA827686DCAA08534478 /* ButtonSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5FBD1F1B2B2DDFF03909B8 /* ButtonSound.swift */; };
 		CD7DD157F5B33996F7FA5D8E /* FileSystemToolHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7878CFDA4C915D3023570D92 /* FileSystemToolHelpersTests.swift */; };
 		CDA6A7CF8189B49B21D7A64F /* VoiceSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF637C730E241838C7548D72 /* VoiceSettingsController.swift */; };
@@ -189,6 +190,7 @@
 		A42F0D8A51D3C989243B5DAF /* DismissTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissTool.swift; sourceTree = "<group>"; };
 		A4DB345D78D7E1CC279B8F49 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A8A1AC0B2FB75E49C3152D5F /* ClipboardHistoryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryTool.swift; sourceTree = "<group>"; };
+		A9E848A755192D224FBF81DD /* WebSearchTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchTool.swift; sourceTree = "<group>"; };
 		AB8ADEC275B0BC634CD49491 /* ProviderStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderStore.swift; sourceTree = "<group>"; };
 		ADA90322492F1A2679940340 /* LsToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LsToolTests.swift; sourceTree = "<group>"; };
 		AF637C730E241838C7548D72 /* VoiceSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettingsController.swift; sourceTree = "<group>"; };
@@ -510,6 +512,7 @@
 				DC6FEB4F6520174E8D9A991F /* LsTool.swift */,
 				9BCE6A076A69299A2B92B673 /* ReadTool.swift */,
 				4AAE3B60D199496B2AD15707 /* WebFetchTool.swift */,
+				A9E848A755192D224FBF81DD /* WebSearchTool.swift */,
 				1C23F76A77C1AEDFCD0BC3D3 /* WriteTool.swift */,
 			);
 			path = Tools;
@@ -777,6 +780,7 @@
 				CDA6A7CF8189B49B21D7A64F /* VoiceSettingsController.swift in Sources */,
 				4A828D5A83EBAAAB377315FB /* VoiceSettingsView.swift in Sources */,
 				5BFE8EA7252582A6DE513D3D /* WebFetchTool.swift in Sources */,
+				C7ECE8EA11408F6A2F2964F4 /* WebSearchTool.swift in Sources */,
 				6B4AE21C4C60C7A3879FFAC1 /* WriteTool.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

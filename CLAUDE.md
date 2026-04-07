@@ -1,49 +1,49 @@
-# Tamagotchai
+# Tama
 
 macOS menu-bar AI assistant powered by Claude. Floating prompt panel (⌥Space), agentic tool loop (bash, read, write, edit, grep, find, ls, web_fetch), animated Rive mascot. Swift 6, macOS 14+, no dock icon.
 
 ## Project Structure
 
 ```
-tamagotchai/Sources/
-├── TamagotchaiApp.swift          # @main entry, menu bar extra, AppDelegate
-├── ContentView.swift             # Root SwiftUI view
-├── AI/                           # Claude API integration
-│   ├── ClaudeService.swift       # HTTP client, streaming, OAuth token management
-│   ├── ClaudeOAuth.swift         # OAuth2 PKCE login flow
-│   ├── ClaudeCredentials.swift   # Encrypted credential persistence
-│   ├── ClaudeModels.swift        # API request/response types
-│   ├── AgentLoop.swift           # Multi-turn tool execution loop (max 50 turns)
-│   ├── StreamParser.swift        # SSE stream parser
-│   └── Tools/                    # Agent tool implementations
-│       ├── AgentTool.swift       # Tool protocol + ToolRegistry
-│       ├── BashTool.swift        # Shell command execution
-│       ├── ReadTool.swift        # File reading (cat -n style)
-│       ├── WriteTool.swift       # File writing
-│       ├── EditTool.swift        # Search-and-replace editing
-│       ├── GrepTool.swift        # Regex file search
-│       ├── FindTool.swift        # Glob file finder
-│       ├── LsTool.swift          # Directory listing
-│       ├── WebFetchTool.swift    # URL fetcher with SSRF protection
+tama/Sources/
+├── TamaApp.swift               # @main entry, menu bar extra, AppDelegate
+├── ContentView.swift           # Root SwiftUI view
+├── AI/                         # Claude API integration
+│   ├── ClaudeService.swift     # HTTP client, streaming, OAuth token management
+│   ├── ClaudeOAuth.swift       # OAuth2 PKCE login flow
+│   ├── ClaudeCredentials.swift # Encrypted credential persistence
+│   ├── ClaudeModels.swift      # API request/response types
+│   ├── AgentLoop.swift         # Multi-turn tool execution loop (max 50 turns)
+│   ├── StreamParser.swift      # SSE stream parser
+│   └── Tools/                  # Agent tool implementations
+│       ├── AgentTool.swift     # Tool protocol + ToolRegistry
+│       ├── BashTool.swift      # Shell command execution
+│       ├── ReadTool.swift      # File reading (cat -n style)
+│       ├── WriteTool.swift     # File writing
+│       ├── EditTool.swift      # Search-and-replace editing
+│       ├── GrepTool.swift      # Regex file search
+│       ├── FindTool.swift      # Glob file finder
+│       ├── LsTool.swift        # Directory listing
+│       ├── WebFetchTool.swift  # URL fetcher with SSRF protection
 │       ├── CreateReminderTool.swift  # Create scheduled reminder notifications
 │       ├── CreateRoutineTool.swift   # Create scheduled LLM-triggered routines
 │       ├── ListSchedulesTool.swift   # List active schedules
 │       └── DeleteScheduleTool.swift  # Delete a schedule by name
-├── Scheduler/                    # Reminder & routine scheduling system
-│   ├── ScheduleParser.swift      # Schedule string parsing (durations, cron, datetime)
-│   └── ScheduleStore.swift       # Job persistence, polling timer, execution
-├── PromptPanel/                  # Floating chat panel UI
-│   ├── FloatingPanel.swift       # NSPanel subclass, streaming display
+├── Scheduler/                  # Reminder & routine scheduling system
+│   ├── ScheduleParser.swift    # Schedule string parsing (durations, cron, datetime)
+│   └── ScheduleStore.swift     # Job persistence, polling timer, execution
+├── PromptPanel/                # Floating chat panel UI
+│   ├── FloatingPanel.swift     # NSPanel subclass, streaming display
 │   ├── PromptPanelController.swift # Panel lifecycle, hotkey, submit handling
-│   ├── MarkdownRenderer.swift    # Markdown → NSAttributedString
-│   ├── ResponseTextView.swift    # Code block overlays, copy buttons
-│   ├── SkeletonView.swift        # Loading shimmer placeholder
-│   ├── ToolIndicatorView.swift   # Active tool indicator
-│   └── PanelHelperViews.swift    # Shared panel subviews
-├── Mascot/                       # Animated Rive mascot (idle/typing/waiting/responding)
-├── Login/                        # OAuth login window + SwiftUI view
-├── Permissions/                  # Accessibility & Full Disk Access checker
-└── UI/                           # Shared components (GlassButton, DropdownPanel)
+│   ├── MarkdownRenderer.swift  # Markdown → NSAttributedString
+│   ├── ResponseTextView.swift # Code block overlays, copy buttons
+│   ├── SkeletonView.swift     # Loading shimmer placeholder
+│   ├── ToolIndicatorView.swift # Active tool indicator
+│   └── PanelHelperViews.swift # Shared panel subviews
+├── Mascot/                    # Animated Rive mascot (idle/typing/waiting/responding)
+├── Login/                     # OAuth login window + SwiftUI view
+├── Permissions/               # Accessibility & Full Disk Access checker
+└── UI/                        # Shared components (GlassButton, DropdownPanel)
 ```
 
 ## Tech Stack
@@ -53,7 +53,7 @@ tamagotchai/Sources/
 - **UI**: AppKit (NSPanel, NSTextView) + SwiftUI
 - **Dependencies**: RiveRuntime (mascot animations), Highlightr (syntax highlighting)
 - **Build**: XcodeGen (`project.yml` → .xcodeproj), SPM for packages
-- **Logging**: Apple Unified Logging (`os.Logger`, subsystem `com.unstablemind.tamagotchai`)
+- **Logging**: Apple Unified Logging (`os.Logger`, subsystem `com.unstablemind.tama`)
 
 ## Build & Quality Commands
 
@@ -62,25 +62,25 @@ tamagotchai/Sources/
 xcodegen generate
 
 # Build
-xcodebuild -project Tamagotchai.xcodeproj -scheme Tamagotchai -configuration Debug build
+xcodebuild -project Tama.xcodeproj -scheme Tama -configuration Debug build
 
 # Lint (runs automatically on build via Xcode script phase)
 swiftlint lint --config .swiftlint.yml
 
 # Format check (dry run — also runs on build)
-swiftformat --lint --config .swiftformat tamagotchai/Sources
+swiftformat --lint --config .swiftformat Tama/Sources
 
 # Format (auto-fix)
-swiftformat --config .swiftformat tamagotchai/Sources
+swiftformat --config .swiftformat Tama/Sources
 ```
 
 ## Logging
 
-All logging uses `os.Logger` with subsystem `com.unstablemind.tamagotchai`. Categories by file:
+All logging uses `os.Logger` with subsystem `com.unstablemind.tama`. Categories by file:
 
 | Category | File(s) |
 |---|---|
-| `app` | TamagotchaiApp.swift |
+| `app` | TamaApp.swift |
 | `controller` | PromptPanelController.swift |
 | `panel` | FloatingPanel.swift |
 | `claude` | ClaudeService.swift |
@@ -104,19 +104,19 @@ All logging uses `os.Logger` with subsystem `com.unstablemind.tamagotchai`. Cate
 
 ```bash
 # Stream all app logs in Terminal
-log stream --predicate 'subsystem == "com.unstablemind.tamagotchai"' --level debug
+log stream --predicate 'subsystem == "com.unstablemind.tama"' --level debug
 
 # Filter by category (e.g. agent loop only)
-log stream --predicate 'subsystem == "com.unstablemind.tamagotchai" AND category == "agent"' --level debug
+log stream --predicate 'subsystem == "com.unstablemind.tama" AND category == "agent"' --level debug
 
 # Filter tools only
-log stream --predicate 'subsystem == "com.unstablemind.tamagotchai" AND category BEGINSWITH "tool."' --level debug
+log stream --predicate 'subsystem == "com.unstablemind.tama" AND category BEGINSWITH "tool."' --level debug
 
 # Search recent logs (last 5 minutes)
-log show --predicate 'subsystem == "com.unstablemind.tamagotchai"' --last 5m --level debug
+log show --predicate 'subsystem == "com.unstablemind.tama"' --last 5m --level debug
 ```
 
-Also viewable in **Console.app** → filter by subsystem `com.unstablemind.tamagotchai`.
+Also viewable in **Console.app** → filter by subsystem `com.unstablemind.tama`.
 
 ## Code Rules
 

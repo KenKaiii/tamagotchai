@@ -1,4 +1,4 @@
-name: Tamagotchai
+name: Tama
 options:
   bundleIdPrefix: com.unstablemind
   deploymentTarget:
@@ -29,34 +29,34 @@ packages:
     exactVersion: "0.0.6"
 
 schemes:
-  Tamagotchai:
+  Tama:
     build:
       targets:
-        Tamagotchai: all
-        TamagotchaiTests: [test]
+        Tama: all
+        TamaTests: [test]
     test:
       targets:
-        - TamagotchaiTests
+        - TamaTests
 
 targets:
-  Tamagotchai:
+  Tama:
     type: application
     platform: macOS
     sources:
-      - path: tamagotchai/Sources
-      - path: tamagotchai/Assets.xcassets
-      - path: tamagotchai/Resources
+      - path: tama/Sources
+      - path: tama/Assets.xcassets
+      - path: tama/Resources
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tamagotchai
+        PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tama
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.lifestyle"
-        INFOPLIST_KEY_CFBundleDisplayName: Tamagotchai
+        INFOPLIST_KEY_CFBundleDisplayName: Tama
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Tamagotchai needs microphone access for voice wake word detection and speech recognition."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Tamagotchai uses speech recognition to transcribe your voice commands."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Tama needs microphone access for voice wake word detection and speech recognition."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Tama uses speech recognition to transcribe your voice commands."
     dependencies:
       - package: RiveRuntime
       - package: Highlightr
@@ -67,7 +67,7 @@ targets:
       - package: MLXUtilsLibrary
         product: MLXUtilsLibrary
     entitlements:
-      path: tamagotchai/Entitlements/Tamagotchai.entitlements
+      path: tama/Entitlements/Tama.entitlements
     preBuildScripts:
       - name: SwiftLint
         basedOnDependencyAnalysis: false
@@ -80,17 +80,17 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           if command -v swiftformat >/dev/null 2>&1; then
-            swiftformat --lint --config "${SRCROOT}/.swiftformat" "${SRCROOT}/tamagotchai/Sources" || true
+            swiftformat --lint --config "${SRCROOT}/.swiftformat" "${SRCROOT}/tama/Sources" || true
           fi
         outputFiles: []
-  TamagotchaiTests:
+  TamaTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: tamagotchai/Tests
+      - path: Tama/Tests
     dependencies:
-      - target: Tamagotchai
+      - target: Tama
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tamagotchai.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tama.tests
         GENERATE_INFOPLIST_FILE: YES

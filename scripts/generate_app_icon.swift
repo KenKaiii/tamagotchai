@@ -196,7 +196,7 @@ func renderIcon(size: Int) -> Data? {
 
 // MARK: - Generate all sizes
 
-let outputDir = "tamagotchai/Assets.xcassets/AppIcon.appiconset"
+let outputDir = "tama/Assets.xcassets/AppIcon.appiconset"
 
 struct IconSize {
     let size: Int

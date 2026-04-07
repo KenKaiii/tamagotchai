@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import os
+import UserNotifications
 
 /// Manages the floating prompt panel lifecycle and global hotkey registration.
 @MainActor
@@ -558,6 +559,19 @@ final class PromptPanelController {
                     if !reply.isEmpty {
                         logger.info("Panel dismissed — showing background reply notification")
                         NotchNotificationPresenter.showAgentReply(message: reply)
+
+                        // System notification for Notification Center history
+                        let content = UNMutableNotificationContent()
+                        content.title = "Tama"
+                        content.body = String(reply.prefix(256))
+                        content.sound = .default
+
+                        let request = UNNotificationRequest(
+                            identifier: UUID().uuidString,
+                            content: content,
+                            trigger: nil
+                        )
+                        try? await UNUserNotificationCenter.current().add(request)
                     }
                     MenuBarMood.shared.setActivity(nil)
                     activeAgentTask = nil

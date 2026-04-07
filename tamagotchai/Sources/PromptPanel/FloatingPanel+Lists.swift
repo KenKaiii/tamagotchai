@@ -45,7 +45,11 @@ extension FloatingPanel {
         responseTextView.textStorage?.setAttributedString(NSAttributedString())
         responseTextView.removeAllCopyButtons()
 
-        sessionListView.reload(groups: groups, emptyMessage: emptyMessage)
+        sessionListView.reload(
+            groups: groups,
+            emptyMessage: emptyMessage,
+            activeSessionIDs: SessionStore.shared.activeSessionIDs
+        )
 
         // Calculate target height based on content
         let listTargetHeight: CGFloat
@@ -439,7 +443,11 @@ extension FloatingPanel {
 
     /// Lightweight filter — only reloads the session list data without touching the input field or frame.
     func filterSessionList(groups: [(label: String, sessions: [ChatSession])], emptyMessage: String? = nil) {
-        sessionListView.reload(groups: groups, emptyMessage: emptyMessage)
+        sessionListView.reload(
+            groups: groups,
+            emptyMessage: emptyMessage,
+            activeSessionIDs: SessionStore.shared.activeSessionIDs
+        )
         sessionListView.scrollToTop()
     }
 

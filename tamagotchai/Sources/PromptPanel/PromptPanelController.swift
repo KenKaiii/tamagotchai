@@ -102,9 +102,15 @@ final class PromptPanelController {
         ttsUnloadTask?.cancel()
         ttsUnloadTask = nil
 
-        // Hard reset: kill any in-flight work from the previous session.
-        // This guarantees a clean slate even if the previous agent hung or errored.
-        cancelAllActiveTasks()
+        // Cancel UI tasks (stream, TTS, voice) but let the agent task keep
+        // running in the background — it will save its result independently.
+        activeStreamTask?.cancel()
+        activeStreamTask = nil
+        activeAgentTask = nil // detach, don't cancel — task keeps running
+        SpeechService.shared.stop()
+        VoiceService.shared.stopFollowUpCapture()
+        panel?.hideToolIndicator()
+        MenuBarMood.shared.setActivity(nil)
 
         isDismissedByAgent = false
         isPanelDismissed = false
@@ -136,6 +142,7 @@ final class PromptPanelController {
         activeStreamTask = nil
         SpeechService.shared.stop()
         VoiceService.shared.stopFollowUpCapture()
+        BrowserManager.shared.disconnect()
         panel?.hideToolIndicator()
         MenuBarMood.shared.setActivity(nil)
         if clearHistory {
@@ -498,16 +505,19 @@ final class PromptPanelController {
             panel?.hideWaveform()
         }
 
-        activeAgentTask = Task { @MainActor [weak self] in
-            guard let self else {
-                continuation.finish()
-                return
-            }
+        // Save session early so it exists in the list and can show shimmer.
+        saveCurrentSession()
+        let capturedSessionId = currentSession!.id
+        let capturedHistory = conversationHistory
+        SessionStore.shared.markActive(capturedSessionId)
 
-            // Guarantee the continuation is finished on ALL exit paths.
-            // Without this, streamResponse hangs forever on the for-await loop
-            // if an unexpected code path skips continuation.finish().
-            defer { continuation.finish() }
+        activeAgentTask = Task { @MainActor [weak self] in
+            // Always clean up active state and finish the continuation.
+            defer {
+                SessionStore.shared.markInactive(capturedSessionId)
+                self?.refreshSessionListIfVisible()
+                continuation.finish()
+            }
 
             // Accumulate final response text so we can show a notification
             // if the panel was dismissed while the agent was working.
@@ -515,14 +525,15 @@ final class PromptPanelController {
 
             do {
                 try Task.checkCancellation()
-                let updatedHistory = try await agentLoop.run(
-                    messages: conversationHistory,
+                let updatedHistory = try await self?.agentLoop.run(
+                    messages: capturedHistory,
                     systemPrompt: systemPrompt,
                     onEvent: { [weak self] event in
                         switch event {
                         case let .textDelta(delta):
                             backgroundAccumulatedText += delta
                             MainActor.assumeIsolated {
+                                guard self?.currentSession?.id == capturedSessionId else { return }
                                 self?.panel?.hideToolIndicator()
                                 if speakInline {
                                     SpeechService.shared.feedChunk(delta)
@@ -532,6 +543,7 @@ final class PromptPanelController {
                         case let .toolStart(name, _):
                             continuation.yield("\n\n")
                             MainActor.assumeIsolated {
+                                guard self?.currentSession?.id == capturedSessionId else { return }
                                 self?.panel?.showToolIndicator(name: name)
                                 if speakInline {
                                     SpeechService.shared.flushBuffer()
@@ -539,38 +551,57 @@ final class PromptPanelController {
                             }
                         case let .toolRunning(name, args):
                             MainActor.assumeIsolated {
+                                guard self?.currentSession?.id == capturedSessionId else { return }
                                 self?.panel?.showToolIndicator(name: name, args: args)
                             }
                         case .toolResult:
                             break
                         case .turnComplete:
                             MainActor.assumeIsolated {
+                                guard self?.currentSession?.id == capturedSessionId else { return }
                                 self?.panel?.hideToolIndicator()
                             }
-                        // continuation.finish() handled by defer
                         case let .error(msg):
                             MainActor.assumeIsolated {
+                                guard self?.currentSession?.id == capturedSessionId else { return }
                                 self?.panel?.hideToolIndicator()
                             }
                             continuation.yield("\n\n> **Error:** \(msg)\n\n")
                         }
                     }
                 )
-                conversationHistory = updatedHistory
-                // swiftformat:disable:next redundantSelf
-                logger.info("Conversation history updated — \(self.conversationHistory.count) messages")
-                saveCurrentSession()
 
-                // If the panel was dismissed while the agent was working,
-                // notify the user with the response.
-                if isPanelDismissed {
+                guard let updatedHistory else { return }
+
+                // Save the completed conversation directly to the session store
+                // using the captured ID — self's state may have changed (user
+                // started a new conversation or reopened the panel).
+                let messages = updatedHistory.compactMap { ChatMessage.fromAPIFormat($0) }
+                if !messages.isEmpty, var session = SessionStore.shared.session(for: capturedSessionId) {
+                    session.messages = messages
+                    session.updatedAt = Date()
+                    SessionStore.shared.save(session: session)
+                }
+
+                // Update controller state only if this is still the active session
+                if self?.currentSession?.id == capturedSessionId {
+                    self?.conversationHistory = updatedHistory
+                    self?.currentSession = SessionStore.shared.session(for: capturedSessionId)
+                }
+
+                let count = updatedHistory.count
+                self?.logger.info("Agent finished — \(count) messages saved to session")
+
+                // If the panel was dismissed (or user moved on), notify with the response.
+                let isStillViewing = self?.currentSession?.id == capturedSessionId
+                    && self?.isPanelDismissed != true
+                if !isStillViewing {
                     let reply = backgroundAccumulatedText
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if !reply.isEmpty {
-                        logger.info("Panel dismissed — showing background reply notification")
+                        self?.logger.info("Panel dismissed — showing background reply notification")
                         NotchNotificationPresenter.showAgentReply(message: reply)
 
-                        // System notification for Notification Center history
                         let content = UNMutableNotificationContent()
                         content.title = "Tama"
                         content.body = String(reply.prefix(256))
@@ -584,24 +615,23 @@ final class PromptPanelController {
                         try? await UNUserNotificationCenter.current().add(request)
                     }
                     MenuBarMood.shared.setActivity(nil)
-                    activeAgentTask = nil
                 }
             } catch is AgentDismissError {
-                logger.info("Agent dismissed — closing panel")
-                isDismissedByAgent = true
+                self?.logger.info("Agent dismissed — closing panel")
+                self?.isDismissedByAgent = true
                 SpeechService.shared.stop()
-                cancelAllActiveTasks(clearHistory: true)
-                panel?.dismiss()
+                self?.cancelAllActiveTasks(clearHistory: true)
+                self?.panel?.dismiss()
             } catch is CancellationError {
-                logger.info("Agent task cancelled")
+                self?.logger.info("Agent task cancelled")
             } catch let urlError as URLError where urlError.code == .cancelled {
-                logger.info("Agent task cancelled (URLSession)")
+                self?.logger.info("Agent task cancelled (URLSession)")
             } catch {
                 guard !Task.isCancelled else {
-                    logger.info("Agent task cancelled (post-error)")
+                    self?.logger.info("Agent task cancelled (post-error)")
                     return
                 }
-                logger.error("Agent loop error: \(error.localizedDescription)")
+                self?.logger.error("Agent loop error: \(error.localizedDescription)")
                 continuation.finish(throwing: error)
             }
         }
@@ -615,7 +645,6 @@ final class PromptPanelController {
                 panel: panel,
                 historyCountBeforeSubmit: historyCountBeforeSubmit
             )
-            activeAgentTask = nil
             activeStreamTask = nil
         }
     }
@@ -677,6 +706,12 @@ final class PromptPanelController {
             panel.mascot.setState(.idle)
             startVoiceCapture()
         }
+    }
+
+    /// Refreshes the session list if the panel is visible and showing a list tab (not mid-conversation).
+    private func refreshSessionListIfVisible() {
+        guard let panel, panel.isVisible, !isPanelDismissed, !panel.isInsideSession else { return }
+        handleTabChanged(currentTab)
     }
 
     // MARK: - System Prompts

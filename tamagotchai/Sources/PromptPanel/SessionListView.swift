@@ -42,6 +42,9 @@ final class SessionListView: NSView {
     /// Current tracking areas for hover effects.
     private var rowTrackingAreas: [(area: NSTrackingArea, view: NSView)] = []
 
+    /// Session IDs that currently have an active agent task running.
+    private var activeSessionIDs: Set<UUID> = []
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         setup()
@@ -76,7 +79,12 @@ final class SessionListView: NSView {
     }
 
     /// Reloads the session list with grouped data, or shows an empty state message.
-    func reload(groups: [(label: String, sessions: [ChatSession])], emptyMessage: String? = nil) {
+    func reload(
+        groups: [(label: String, sessions: [ChatSession])],
+        emptyMessage: String? = nil,
+        activeSessionIDs: Set<UUID> = []
+    ) {
+        self.activeSessionIDs = activeSessionIDs
         // Remove old views and tracking areas
         for (area, view) in rowTrackingAreas {
             view.removeTrackingArea(area)
@@ -149,7 +157,8 @@ final class SessionListView: NSView {
     }
 
     private func makeSessionRow(_ session: ChatSession) -> NSView {
-        let row = SessionRowView(session: session)
+        let isActive = activeSessionIDs.contains(session.id)
+        let row = SessionRowView(session: session, isActive: isActive)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.heightAnchor.constraint(equalToConstant: 44).isActive = true
         row.onSelect = { [weak self] in
@@ -169,6 +178,7 @@ private final class SessionRowView: NSView {
     var onSelect: (() -> Void)?
     var onDelete: (() -> Void)?
     private let session: ChatSession
+    private let isActive: Bool
     private var isHovered = false
     private var trackingArea: NSTrackingArea?
 
@@ -216,13 +226,31 @@ private final class SessionRowView: NSView {
     }()
 
     private let timeLabel = NSTextField(labelWithString: "")
+    private var titleLabel: NSTextField?
 
-    init(session: ChatSession) {
+    private lazy var shimmerLayer: CAGradientLayer = {
+        let gradient = CAGradientLayer()
+        gradient.colors = [
+            NSColor.systemGreen.withAlphaComponent(0.0).cgColor,
+            NSColor.systemGreen.withAlphaComponent(0.35).cgColor,
+            NSColor.systemGreen.withAlphaComponent(0.0).cgColor,
+        ]
+        gradient.startPoint = CGPoint(x: 0, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1, y: 0.5)
+        gradient.locations = [-1, -0.5, 0].map { NSNumber(value: $0) }
+        return gradient
+    }()
+
+    init(session: ChatSession, isActive: Bool = false) {
         self.session = session
+        self.isActive = isActive
         super.init(frame: .zero)
         wantsLayer = true
         layer?.addSublayer(highlightLayer)
         setupViews()
+        if isActive {
+            setupShimmer()
+        }
     }
 
     @available(*, unavailable)
@@ -241,10 +269,11 @@ private final class SessionRowView: NSView {
 
         let titleLabel = NSTextField(labelWithString: session.title)
         titleLabel.font = .systemFont(ofSize: 18, weight: .regular)
-        titleLabel.textColor = .labelColor
+        titleLabel.textColor = isActive ? .systemGreen : .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        self.titleLabel = titleLabel
 
         timeLabel.stringValue = Self.relativeTime(session.updatedAt)
         timeLabel.font = .systemFont(ofSize: 22, weight: .regular)
@@ -291,9 +320,26 @@ private final class SessionRowView: NSView {
         onDelete?()
     }
 
+    private func setupShimmer() {
+        guard let titleLabel else { return }
+        titleLabel.wantsLayer = true
+        titleLabel.layer?.addSublayer(shimmerLayer)
+        titleLabel.layer?.masksToBounds = true
+
+        let animation = CABasicAnimation(keyPath: "locations")
+        animation.fromValue = [-1.0, -0.5, 0.0].map { NSNumber(value: $0) }
+        animation.toValue = [1.0, 1.5, 2.0].map { NSNumber(value: $0) }
+        animation.duration = 1.5
+        animation.repeatCount = .infinity
+        shimmerLayer.add(animation, forKey: "shimmer")
+    }
+
     override func layout() {
         super.layout()
         highlightLayer.frame = bounds.insetBy(dx: 8, dy: 1)
+        if isActive, let titleLabel {
+            shimmerLayer.frame = titleLabel.bounds
+        }
     }
 
     override func updateTrackingAreas() {

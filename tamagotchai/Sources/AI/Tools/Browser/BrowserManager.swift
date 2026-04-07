@@ -16,6 +16,7 @@ final class BrowserManager: @unchecked Sendable {
 
     private var connection: CDPConnection?
     private var browserProcess: Process?
+    private var allLaunchedProcesses: [Process] = []
     private let lock = NSLock()
 
     private init() {}
@@ -73,11 +74,23 @@ final class BrowserManager: @unchecked Sendable {
             connection?.disconnect()
             connection = nil
 
-            if let process = browserProcess, process.isRunning {
+            // Terminate all browser processes we ever launched
+            let processesToKill = allLaunchedProcesses.filter(\.isRunning)
+            for process in processesToKill {
                 logger.info("Terminating browser process (PID \(process.processIdentifier))")
                 process.terminate()
             }
+            allLaunchedProcesses.removeAll()
             browserProcess = nil
+
+            // Wait for processes to exit on a background thread to avoid blocking the caller.
+            if !processesToKill.isEmpty {
+                DispatchQueue.global(qos: .utility).async {
+                    for process in processesToKill {
+                        process.waitUntilExit()
+                    }
+                }
+            }
         }
     }
 
@@ -198,7 +211,10 @@ final class BrowserManager: @unchecked Sendable {
             throw BrowserManagerError.launchFailed(error.localizedDescription)
         }
 
-        lock.withLock { browserProcess = process }
+        lock.withLock {
+            browserProcess = process
+            allLaunchedProcesses.append(process)
+        }
 
         // Parse stderr for the DevTools WebSocket URL (browser-level).
         let browserWSURL = try await parseWebSocketURL(from: stderrPipe, timeout: 15.0)

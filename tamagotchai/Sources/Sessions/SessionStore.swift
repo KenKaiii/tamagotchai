@@ -12,6 +12,7 @@ final class SessionStore {
     static let shared = SessionStore()
 
     private(set) var sessions: [ChatSession] = []
+    private(set) var activeSessionIDs: Set<UUID> = []
 
     private init() {
         loadAll()
@@ -120,6 +121,18 @@ final class SessionStore {
     func sessionsGroupedByDate(type: SessionType) -> [(label: String, sessions: [ChatSession])] {
         let filtered = sessions.filter { $0.sessionType == type }
         return groupSessionsByDate(filtered)
+    }
+
+    // MARK: - Active Session Tracking
+
+    func markActive(_ id: UUID) {
+        activeSessionIDs.insert(id)
+        logger.debug("Session \(id.uuidString) marked active")
+    }
+
+    func markInactive(_ id: UUID) {
+        activeSessionIDs.remove(id)
+        logger.debug("Session \(id.uuidString) marked inactive")
     }
 
     // MARK: - Grouping

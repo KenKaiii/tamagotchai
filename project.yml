@@ -62,6 +62,7 @@ targets:
       - package: Highlightr
       - package: kokoro-ios
         product: KokoroSwift
+        embed: true
       - package: mlx-swift
         product: MLX
       - package: MLXUtilsLibrary

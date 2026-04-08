@@ -55,6 +55,7 @@
 		5BE0848E7002D0F7C8C2CD1C /* FloatingPanel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49A58F3146578793EB1B3CC /* FloatingPanel+Presentation.swift */; };
 		5CAD8217511B51035DED58ED /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D70039C96EBE77D2760A254 /* SessionListView.swift */; };
 		5E6EB4937046A79883B3E78A /* ProviderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0703C309F4DE4DFF9D571A8 /* ProviderStore.swift */; };
+		625824754BD0FCCB029967B0 /* KokoroSwift in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 1973EFBFCAF1952DD3D7CF0C /* KokoroSwift */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		633449D95087F62ACF27A404 /* PermissionsChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CA6FAF0DB5C7D2F9C43DCB /* PermissionsChecker.swift */; };
 		684CC7B81C26FC5A5E7B7535 /* WriteTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D5D52F4AA20CD480728E6D /* WriteTool.swift */; };
 		697457228D8703520502ED74 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62099CFA99CA58E15B2FAAC5 /* ClipboardMonitor.swift */; };
@@ -142,6 +143,20 @@
 			remoteInfo = Tama;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5D0A4CD91D1864CF1D56F78E /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				625824754BD0FCCB029967B0 /* KokoroSwift in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		041A91E8AD52EF028B60ED7D /* ButtonSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonSound.swift; sourceTree = "<group>"; };
@@ -683,6 +698,7 @@
 				E2540D2A68D66F3644E4167B /* Sources */,
 				1EBA5DA9565931C053D2082E /* Resources */,
 				8FF0ECC870A207E4EC452C9B /* Frameworks */,
+				5D0A4CD91D1864CF1D56F78E /* Embed Frameworks */,
 			);
 			buildRules = (
 			);

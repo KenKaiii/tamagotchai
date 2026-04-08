@@ -58,8 +58,8 @@ struct PermissionsView: View {
                     granted: microphoneGranted,
                     action: {
                         if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-                            checker.requestMicrophone { _ in
-                                refreshStatuses()
+                            checker.requestMicrophone { granted in
+                                microphoneGranted = granted
                             }
                         } else {
                             checker.openMicrophoneSettings()
@@ -75,8 +75,8 @@ struct PermissionsView: View {
                     granted: speechGranted,
                     action: {
                         if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
-                            checker.requestSpeechRecognition { _ in
-                                refreshStatuses()
+                            checker.requestSpeechRecognition { status in
+                                speechGranted = status == .authorized
                             }
                         } else {
                             checker.openMicrophoneSettings()
@@ -143,8 +143,11 @@ struct PermissionsView: View {
     }
 
     private func startPermissionPolling() {
-        refreshStatuses()
-        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+        // Initial check with delay to ensure system returns correct status
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            refreshStatuses()
+        }
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             MainActor.assumeIsolated {
                 refreshStatuses()
             }

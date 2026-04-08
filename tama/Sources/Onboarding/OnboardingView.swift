@@ -203,8 +203,8 @@ struct OnboardingView: View {
                     granted: microphoneGranted
                 ) {
                     if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-                        PermissionsChecker.shared.requestMicrophone { _ in
-                            refreshPermissions()
+                        PermissionsChecker.shared.requestMicrophone { granted in
+                            microphoneGranted = granted
                         }
                     } else {
                         OnboardingController.yieldToSystemUI()
@@ -220,8 +220,8 @@ struct OnboardingView: View {
                     granted: speechGranted
                 ) {
                     if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
-                        PermissionsChecker.shared.requestSpeechRecognition { _ in
-                            refreshPermissions()
+                        PermissionsChecker.shared.requestSpeechRecognition { status in
+                            speechGranted = status == .authorized
                         }
                     } else {
                         OnboardingController.yieldToSystemUI()
@@ -374,7 +374,10 @@ struct OnboardingView: View {
     }
 
     private func startPermissionPolling() {
-        refreshPermissions()
+        // Initial check with delay to ensure system returns correct status
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            refreshPermissions()
+        }
 
         // Listen for accessibility changes via system notification (instant detection).
         // This is an undocumented but widely-used notification from HIServices.framework.
@@ -390,7 +393,7 @@ struct OnboardingView: View {
         }
 
         // Poll for other permissions (FDA, mic, speech) which lack a notification.
-        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             MainActor.assumeIsolated {
                 refreshPermissions()
             }

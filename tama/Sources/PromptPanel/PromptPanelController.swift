@@ -214,6 +214,16 @@ final class PromptPanelController {
                     : "No tasks found."
             )
         }
+        newPanel.onSelectSkill = { [weak self] skill in
+            self?.panel?.pushSkillView(skill: skill)
+        }
+        newPanel.onDeleteSkill = { [weak self] skill in
+            self?.deleteSkill(skill)
+        }
+        newPanel.onSkillSearchChanged = { [weak self] query in
+            let skills = SkillStore.shared.search(query: query)
+            self?.panel?.filterSkillList(skills: skills)
+        }
         newPanel.onSessionSearchChanged = { [weak self] query in
             guard let self else { return }
             let type: SessionType = currentTab == .reminders ? .reminders : .routines
@@ -313,6 +323,7 @@ final class PromptPanelController {
 
         // Tools tab has its own display path
         if tab == .tools {
+            panel?.hideSkillList()
             panel?.showToolList(tools: PanelToolRegistry.shared.allTools)
             return
         }
@@ -320,6 +331,7 @@ final class PromptPanelController {
         // Tasks tab shows task lists
         if tab == .tasks {
             panel?.hideToolList()
+            panel?.hideSkillList()
             let groups = TaskStore.shared.allTaskListsGroupedByDate()
             if groups.isEmpty {
                 panel?.showTaskList([], emptyMessage: "No task lists yet. Ask Tama to create one for you.")
@@ -329,9 +341,20 @@ final class PromptPanelController {
             return
         }
 
-        // Hide tool list and task list if switching away
+        // Skills tab shows installed skills
+        if tab == .skills {
+            panel?.hideToolList()
+            panel?.hideTaskList()
+            SkillStore.shared.loadAll()
+            let skills = SkillStore.shared.skills
+            panel?.showSkillList(skills)
+            return
+        }
+
+        // Hide tool list, task list, and skill list if switching away
         panel?.hideToolList()
         panel?.hideTaskList()
+        panel?.hideSkillList()
 
         // Restart voice capture when returning to chats from a search tab
         if tab == .chats, wasSearchTab {
@@ -359,7 +382,7 @@ final class PromptPanelController {
                 "No routines yet. Ask Tama to create one for you.",
                 "Search routines..."
             )
-        case .tasks, .tools:
+        case .tasks, .tools, .skills:
             ([], "", nil) // unreachable — handled above
         }
         if groups.isEmpty {
@@ -389,6 +412,45 @@ final class PromptPanelController {
         logger.info("Deleting task list '\(taskList.title)'")
         TaskStore.shared.delete(id: taskList.id)
         // Refresh the task list
+        handleTabChanged(currentTab)
+    }
+
+    /// Loads a skill into the conversation (for now just shows info).
+    private func loadSkill(_ skill: Skill) {
+        logger.info("Loading skill '\(skill.name)'")
+        // For now, just start a new conversation with the skill content as context
+        cancelAllActiveTasks(clearHistory: true)
+        currentSession = nil
+
+        // Add the skill content as a system-like context message
+        let skillMessage = "Using skill: **\(skill.name)**\n\n\(skill.content)"
+        conversationHistory = [
+            ["role": "user", "content": "I'd like to use the \(skill.name) skill."],
+            ["role": "assistant", "content": skillMessage],
+        ]
+
+        // Show in panel
+        panel?.restoreConversation(messages: [
+            ChatMessage(
+                id: UUID(),
+                role: .user,
+                content: [.text("I'd like to use the \(skill.name) skill.")],
+                timestamp: Date()
+            ),
+            ChatMessage(
+                id: UUID(),
+                role: .assistant,
+                content: [.text(skillMessage)],
+                timestamp: Date()
+            ),
+        ])
+    }
+
+    /// Deletes a skill and refreshes the skill list view.
+    private func deleteSkill(_ skill: Skill) {
+        logger.info("Deleting skill '\(skill.name)'")
+        SkillStore.shared.delete(id: skill.id)
+        // Refresh the skill list
         handleTabChanged(currentTab)
     }
 
@@ -762,6 +824,7 @@ final class PromptPanelController {
 
     private var agentSystemPrompt: String {
         let cwd = Self.ensureWorkspace()
+        let skillsSection = SkillStore.shared.formatForPrompt()
         return """
         you have access to tools for working with the user's computer. \
         you can run shell commands (bash), read/write/edit files, \
@@ -775,11 +838,13 @@ final class PromptPanelController {
         for multi-step tasks, use the "task" tool to create a checklist — \
         tasks are stored and run later when the user opens the Tasks Pane (⌥Space → Tasks tab) \
         and presses R. working directory: \(cwd)
+        \(skillsSection)
         """
     }
 
     private var voiceSystemPrompt: String {
         let cwd = Self.ensureWorkspace()
+        let skillsSection = SkillStore.shared.formatForPrompt()
         return """
         you have access to tools for working with the user's computer. \
         you can run shell commands (bash), read/write/edit files, \
@@ -789,6 +854,7 @@ final class PromptPanelController {
         (create_routine — runs a prompt and notifies), list/delete \
         schedules, and create task checklists (task — stored for later). \
         working directory: \(cwd)
+        \(skillsSection)
 
         CRITICAL: this is a voice conversation. your response will be spoken aloud. \
         you MUST be extremely brief:

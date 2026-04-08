@@ -31,6 +31,7 @@ struct OnboardingView: View {
     @State private var microphoneGranted = false
     @State private var speechGranted = false
     @State private var appManagementGranted = false
+    @State private var notificationsGranted = false
     @State private var permissionPollTimer: Timer?
     @State private var axObserver: NSObjectProtocol?
 
@@ -243,6 +244,23 @@ struct OnboardingView: View {
 
                 Divider().opacity(0.3).padding(.horizontal, 14)
 
+                permissionRow(
+                    title: "Notifications",
+                    description: "Reminders and routine alerts",
+                    granted: notificationsGranted
+                ) {
+                    if notificationsGranted {
+                        OnboardingController.yieldToSystemUI()
+                        PermissionsChecker.shared.openNotificationsSettings()
+                    } else {
+                        PermissionsChecker.shared.requestNotifications { _ in
+                            refreshPermissions()
+                        }
+                    }
+                }
+
+                Divider().opacity(0.3).padding(.horizontal, 14)
+
                 browserRow
             }
 
@@ -349,6 +367,7 @@ struct OnboardingView: View {
         microphoneGranted = checker.isMicrophoneGranted()
         speechGranted = checker.isSpeechRecognitionGranted()
         appManagementGranted = checker.isAppManagementGranted()
+        notificationsGranted = checker.isNotificationsGranted()
     }
 
     private func startPermissionPolling() {

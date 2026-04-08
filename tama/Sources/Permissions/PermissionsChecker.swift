@@ -3,6 +3,7 @@ import ApplicationServices
 import AVFoundation
 import os
 import Speech
+import UserNotifications
 
 private let logger = Logger(
     subsystem: "com.unstablemind.tama",
@@ -148,6 +149,39 @@ final class PermissionsChecker {
 
     func openAppManagementSettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
+        NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Notifications
+
+    func isNotificationsGranted() -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        var granted = false
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            granted = settings.authorizationStatus == .authorized
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        logger.info("Notifications permission check: \(granted ? "granted" : "denied")")
+        return granted
+    }
+
+    func requestNotifications(completion: (@MainActor (Bool) -> Void)? = nil) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            DispatchQueue.main.async {
+                if let error {
+                    logger.error("Notifications permission error: \(error.localizedDescription)")
+                }
+                logger.info("Notifications permission response: \(granted ? "granted" : "denied")")
+                completion?(granted)
+            }
+        }
+    }
+
+    func openNotificationsSettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
         NSWorkspace.shared.open(url)
     }
 

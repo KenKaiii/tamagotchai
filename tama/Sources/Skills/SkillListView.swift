@@ -75,15 +75,15 @@ final class SkillListView: NSView {
                 let row = SkillRowView(skill: skill)
                 row.translatesAutoresizingMaskIntoConstraints = false
                 row.heightAnchor.constraint(equalToConstant: 52).isActive = true
-                // Constrain row width to contentStack to prevent expansion from long descriptions
-                row.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
                 row.onSelect = { [weak self] in
                     self?.onSelectSkill?(skill)
                 }
                 row.onDelete = { [weak self] in
                     self?.onDeleteSkill?(skill)
                 }
+                // Add to stack first, then constrain width (needs common ancestor)
                 contentStack.addArrangedSubview(row)
+                row.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
             }
         }
     }
@@ -194,12 +194,14 @@ private final class SkillRowView: NSView {
         nameLabel.textColor = .labelColor
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let descLabel = NSTextField(labelWithString: skill.description)
         descLabel.font = .systemFont(ofSize: 12, weight: .regular)
         descLabel.textColor = .secondaryLabelColor
         descLabel.lineBreakMode = .byTruncatingTail
         descLabel.translatesAutoresizingMaskIntoConstraints = false
+        descLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let textStack = NSStackView(views: [nameLabel, descLabel])
         textStack.orientation = .vertical
@@ -224,9 +226,7 @@ private final class SkillRowView: NSView {
 
             textStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
             textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            // Constrain to delete button when visible, or to row edge when hidden
             textStack.trailingAnchor.constraint(lessThanOrEqualTo: deleteButton.leadingAnchor, constant: -12),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
 
             deleteButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
             deleteButton.centerYAnchor.constraint(equalTo: centerYAnchor),

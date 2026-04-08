@@ -7,27 +7,15 @@ private let logger = Logger(
 )
 
 /// Manages loading, saving, and discovering skills from the .gg/skills directory.
-/// Watches the directory for changes and reloads automatically.
 @MainActor
 final class SkillStore {
     static let shared = SkillStore()
 
     private(set) var skills: [Skill] = []
 
-    // MARK: - File Watching
-
-    private var pollTimer: DispatchSourceTimer?
-    private var debounceWorkItem: DispatchWorkItem?
-    private static let pollInterval: TimeInterval = 5.0
-    private static let debounceInterval: TimeInterval = 0.5
-    private var lastKnownModificationTime: Date?
-
     private init() {
         loadAll()
-        startWatching()
     }
-
-    // MARK: - Public API
 
     /// Loads all skills from the global skills directory.
     func loadAll() {
@@ -159,71 +147,6 @@ final class SkillStore {
         \(skillsList)
         """
     }
-
-    // MARK: - File Watching
-
-    /// Starts polling the skills directory for changes using DispatchSourceTimer.
-    private func startWatching() {
-        pollTimer?.cancel()
-
-        // Record initial modification time
-        lastKnownModificationTime = directoryModificationDate()
-
-        // Create a timer source on a background queue for efficiency
-        let queue = DispatchQueue(label: "com.unstablemind.tama.skills-poll", qos: .utility)
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-
-        timer.setEventHandler { [weak self] in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.checkForChanges()
-            }
-        }
-
-        // Schedule with repeating interval
-        timer.schedule(deadline: .now(), repeating: .seconds(Int(Self.pollInterval)), leeway: .milliseconds(100))
-
-        timer.resume()
-        pollTimer = timer
-
-        logger.debug("Started polling skills directory (every \(Self.pollInterval)s)")
-    }
-
-    /// Checks if the skills directory has been modified since last check.
-    /// Debounces reloads to prevent rapid successive updates.
-    private func checkForChanges() {
-        guard let currentModDate = directoryModificationDate() else { return }
-
-        if let lastKnown = lastKnownModificationTime, currentModDate > lastKnown {
-            // Cancel any pending reload
-            debounceWorkItem?.cancel()
-
-            // Create new debounced work item
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                logger.debug("Reloading skills after debounce...")
-                loadAll()
-            }
-
-            debounceWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceInterval, execute: workItem)
-        }
-
-        lastKnownModificationTime = currentModDate
-    }
-
-    /// Returns the modification date of the skills directory.
-    private func directoryModificationDate() -> Date? {
-        do {
-            let dir = try Self.skillsDirectory()
-            let attrs = try FileManager.default.attributesOfItem(atPath: dir.path)
-            return attrs[.modificationDate] as? Date
-        } catch {
-            return nil
-        }
-    }
-
-    // MARK: - Storage Path
 
     /// Returns the path to the skills directory: ~/Documents/Tama/.gg/skills
     private static func skillsDirectory() throws -> URL {

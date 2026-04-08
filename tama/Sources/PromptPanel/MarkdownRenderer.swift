@@ -758,6 +758,12 @@ extension MarkdownRenderer {
                     .replacingOccurrences(of: "&", with: "&\u{200B}")
                 result.append(NSAttributedString(string: wrappable, attributes: linkAttrs))
             }
+            // Domain-only URL: example.com, site.app, etc. (without protocol)
+            else if let domainURL = scanner.scanDomainURL() {
+                let fullURL = "https://\(domainURL)"
+                let linkAttrs = linkAttributes(baseFont: baseFont, url: fullURL)
+                result.append(NSAttributedString(string: domainURL, attributes: linkAttrs))
+            }
             // Image ![alt](url) — render inline image or fallback to [🖼 alt]
             else if scanner.currentChar == "!", scanner.peekNext == "[" {
                 scanner.advance() // skip !
@@ -956,6 +962,135 @@ private final class InlineScanner {
         guard url.count > 8 else { return nil } // must have more than just the scheme
         position = end
         return url
+    }
+
+    /// Common TLDs including new gTLDs like .app, .dev, etc.
+    private static let commonTLDs: Set<String> = [
+        // Legacy gTLDs
+        "com", "org", "net", "edu", "gov", "mil", "int",
+        // Country code TLDs (common)
+        "io", "co", "uk", "de", "fr", "jp", "cn", "au", "ca", "eu", "nl", "ru", "br", "in",
+        // New gTLDs
+        "app", "dev", "cloud", "ai", "tech", "online", "store", "blog", "design", "digital",
+        "software", "code", "dev", "api", "app", "web", "site", "website", "space", "tech",
+        "studio", "works", "tools", "systems", "network", "solutions", "services", "support",
+        "academy", "university", "school", "education", "institute", "center",
+        "company", "business", "corp", "enterprise", "industries", "ventures", "holdings",
+        "agency", "consulting", "marketing", "media", "news", "press", "studio", "group",
+        "club", "community", "social", "world", "global", "international", "foundation",
+        "live", "life", "today", "now", "news", "report", "events", "watch",
+        "shop", "store", "market", "shopping", "sale", "deals", "buy", "forsale",
+        "art", "photo", "photos", "pics", "gallery", "graphics", "media", "video", "tv",
+        "music", "band", "rocks", "zone", "city", "town", "place", "area", "region",
+        "health", "care", "medical", "clinic", "hospital", "pharmacy", "fitness",
+        "money", "finance", "financial", "invest", "investments", "bank", "cash", "fund",
+        "email", "mail", "chat", "talk", "phone", "tel", "mobile", "cell",
+        "game", "games", "play", "fun", "party", "cool", "wow", "fun", "lol",
+        "info", "help", "faq", "how", "guide", "tips", "wiki", "directory",
+        "link", "click", "go", "run", "fly", "zip", "fast", "quick", "instant",
+    ]
+
+    /// Try to scan a domain URL without protocol (e.g., example.com, site.app).
+    /// Looks for patterns like: domain.tld or sub.domain.tld
+    func scanDomainURL() -> String? {
+        let remaining = String(text[position...])
+
+        // Must start with alphanumeric, not special chars
+        guard let firstChar = remaining.first,
+              firstChar.isLetter || firstChar.isNumber else { return nil }
+
+        // Scan the domain portion
+        var end = position
+        var dotCount = 0
+        var lastDotIndex = -1
+
+        while end < text.count {
+            let char = text[end]
+
+            if char.isLetter || char.isNumber || char == "-" {
+                end += 1
+            } else if char == "." {
+                guard !hasConsecutiveDots(at: end) else { return nil }
+                lastDotIndex = end
+                dotCount += 1
+                end += 1
+            } else if char == "/", dotCount >= 1 {
+                end = scanPath(startingAt: end)
+                break
+            } else if isQueryChar(char), dotCount >= 1 {
+                end = scanQuery(startingAt: end)
+                break
+            } else {
+                break
+            }
+        }
+
+        guard dotCount >= 1, lastDotIndex > position else { return nil }
+
+        let domainStr = String(text[position ..< end])
+        guard isValidDomainTLD(domainStr), domainStr.count >= 4 else { return nil }
+
+        let finalEnd = stripTrailingPunctuation(end: end)
+        guard finalEnd > position else { return nil }
+
+        let result = String(text[position ..< finalEnd])
+        guard result.count >= 4 else { return nil }
+
+        position = finalEnd
+        return result
+    }
+
+    private func hasConsecutiveDots(at index: Int) -> Bool {
+        index == position || (index > position && text[index - 1] == ".")
+    }
+
+    private func isQueryChar(_ char: Character) -> Bool {
+        ["?", "&", "=", "#", "%", "@"].contains(char)
+    }
+
+    private func isValidPathOrQueryChar(_ char: Character) -> Bool {
+        char.isLetter || char.isNumber || ["/", "-", "_", ".", "?", "&", "=", "%", "#", "@"].contains(char)
+    }
+
+    private func scanPath(startingAt start: Int) -> Int {
+        var pathEnd = start + 1
+        while pathEnd < text.count, isValidPathOrQueryChar(text[pathEnd]) {
+            pathEnd += 1
+        }
+        return pathEnd
+    }
+
+    private func scanQuery(startingAt start: Int) -> Int {
+        var extraEnd = start
+        while extraEnd < text.count, isValidPathOrQueryChar(text[extraEnd]) {
+            extraEnd += 1
+        }
+        return extraEnd
+    }
+
+    private func isValidDomainTLD(_ domainStr: String) -> Bool {
+        let components = domainStr.split(separator: "/", omittingEmptySubsequences: false)
+        let hostPart = String(components[0])
+        let hostComponents = hostPart.split(separator: ".")
+
+        guard let tld = hostComponents.last?.lowercased() else { return false }
+
+        let isKnownTLD = InlineScanner.commonTLDs.contains(tld)
+        let looksLikeTLD = tld.count >= 2 && tld.allSatisfy(\.isLetter)
+
+        return isKnownTLD || looksLikeTLD
+    }
+
+    private func stripTrailingPunctuation(end: Int) -> Int {
+        let trailingPunctuation: Set<Character> = [".", ",", ";", ":", "!", "?", ")", "]", "}"]
+        var finalEnd = end
+        while finalEnd > position, trailingPunctuation.contains(text[finalEnd - 1]) {
+            finalEnd -= 1
+        }
+        while finalEnd > position, text[finalEnd - 1] == "." {
+            finalEnd -= 1
+        }
+        return finalEnd
     }
 
     /// Advance one character and return it.

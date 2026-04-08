@@ -300,6 +300,15 @@ extension FloatingPanel {
         }
         toolListView.isHidden = true
         toolListHeightConstraint?.constant = 0
+        // Clean up task detail view
+        if let taskDetailView {
+            mainStack.removeArrangedSubview(taskDetailView)
+            taskDetailView.removeFromSuperview()
+            taskDetailHeightConstraint = nil
+            self.taskDetailView = nil
+        }
+        taskListView.isHidden = true
+        taskListHeightConstraint?.constant = 0
 
         mascot.setState(.idle)
         mascot.resume()

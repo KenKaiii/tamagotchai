@@ -38,7 +38,7 @@ enum OnboardingController {
             dismiss()
         }
 
-        let windowSize = NSSize(width: 420, height: 530)
+        let windowSize = NSSize(width: 420, height: 580)
         let hosting = NSHostingController(rootView: view)
         hosting.view.setFrameSize(windowSize)
 

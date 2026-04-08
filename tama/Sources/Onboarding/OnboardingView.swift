@@ -119,7 +119,7 @@ struct OnboardingView: View {
             // Navigation
             navigationBar
         }
-        .frame(width: 420, height: 530)
+        .frame(width: 420, height: 580)
     }
 
     // MARK: - Step Indicator

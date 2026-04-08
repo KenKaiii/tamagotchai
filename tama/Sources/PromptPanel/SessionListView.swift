@@ -28,6 +28,7 @@ final class SessionListView: NSView {
         sv.translatesAutoresizingMaskIntoConstraints = false
         sv.scrollerStyle = .overlay
         sv.verticalScrollElasticity = .none
+        sv.contentView.postsBoundsChangedNotifications = true
         return sv
     }()
 
@@ -43,6 +44,9 @@ final class SessionListView: NSView {
     /// Current tracking areas for hover effects.
     private var rowTrackingAreas: [(area: NSTrackingArea, view: NSView)] = []
 
+    /// Scroll notification observer.
+    private var scrollObserver: NSObjectProtocol?
+
     /// Session IDs that currently have an active agent task running.
     private var activeSessionIDs: Set<UUID> = []
 
@@ -56,9 +60,29 @@ final class SessionListView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Updates hover states on all row views after scrolling.
+    /// When scrolling, the mouse stays stationary while content moves,
+    /// so tracking areas don't automatically fire enter/exit events.
+    private func updateHoverStatesAfterScroll() {
+        let mouseLocation = window?.mouseLocationOutsideOfEventStream ?? .zero
+        for case let row as SessionRowView in contentStack.arrangedSubviews {
+            let rowLocation = row.convert(mouseLocation, from: nil)
+            let isActuallyHovered = row.bounds.contains(rowLocation)
+            row.updateHoverState(isHovered: isActuallyHovered)
+        }
+    }
+
     private func setup() {
         translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
+
+        scrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateHoverStatesAfterScroll()
+        }
 
         let docView = FlippedDocumentView()
         docView.translatesAutoresizingMaskIntoConstraints = false
@@ -368,6 +392,15 @@ private final class SessionRowView: NSView {
         highlightLayer.isHidden = true
         deleteButton.isHidden = true
         timeLabel.isHidden = false
+    }
+
+    /// Updates the hover state programmatically (used during scrolling).
+    func updateHoverState(isHovered: Bool) {
+        guard self.isHovered != isHovered else { return }
+        self.isHovered = isHovered
+        highlightLayer.isHidden = !isHovered
+        deleteButton.isHidden = !isHovered
+        timeLabel.isHidden = isHovered
     }
 
     override func mouseDown(with event: NSEvent) {

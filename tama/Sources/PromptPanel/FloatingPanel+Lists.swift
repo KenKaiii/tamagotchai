@@ -24,7 +24,8 @@ extension FloatingPanel {
         inputField.stringValue = ""
 
         // If tab bar is already visible we're switching tabs — use instant swap to prevent jitter
-        let alreadyVisible = !sessionListView.isHidden || !tabBarContainer.isHidden
+        // Also use instant swap if coming from a session (response area visible) to prevent jitter
+        let alreadyVisible = !sessionListView.isHidden || !tabBarContainer.isHidden || !responseScrollView.isHidden
 
         // Hide tool list and task list if switching back from other tabs
         toolListView.isHidden = true

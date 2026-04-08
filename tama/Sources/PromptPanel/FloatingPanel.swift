@@ -549,7 +549,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             toolIndicatorView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             toolIndicatorView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16),
             toolIndicatorView.heightAnchor.constraint(equalToConstant: 30),
-            toolIndicatorView.widthAnchor.constraint(equalToConstant: 130),
+            // Width is managed dynamically by ToolIndicatorView based on content
         ])
     }
 

@@ -5,6 +5,15 @@ final class ToolIndicatorView: NSView {
     private let pillRadius: CGFloat = 12
     private var isGenerating = false
 
+    /// Minimum width for the pill (fits "Generating" comfortably)
+    private let minWidth: CGFloat = 130
+
+    /// Maximum width for the pill to prevent overflow (leaves margin on right side)
+    private let maxWidth: CGFloat = 280
+
+    /// Width constraint that gets updated dynamically
+    private var widthConstraint: NSLayoutConstraint?
+
     private let vibrancy: NSVisualEffectView = {
         let v = NSVisualEffectView()
         v.material = .hudWindow
@@ -63,11 +72,18 @@ final class ToolIndicatorView: NSView {
             stack.topAnchor.constraint(equalTo: vibrancy.topAnchor),
             stack.bottomAnchor.constraint(equalTo: vibrancy.bottomAnchor),
 
-            label.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
+            // Ensure label doesn't overflow - it will truncate with ellipsis
+            label.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth - 44),
 
             spinner.widthAnchor.constraint(equalToConstant: 16),
             spinner.heightAnchor.constraint(equalToConstant: 16),
         ])
+
+        // Set up dynamic width constraint
+        let widthConstraint = widthAnchor.constraint(equalToConstant: minWidth)
+        widthConstraint.priority = .required
+        widthConstraint.isActive = true
+        self.widthConstraint = widthConstraint
 
         alphaValue = 0
     }
@@ -186,12 +202,33 @@ final class ToolIndicatorView: NSView {
         spinner.startAnimation(nil)
         isHidden = false
 
+        // Update width based on text content before showing
+        updateWidth(for: displayText)
+
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.2
             ctx.allowsImplicitAnimation = true
             self.label.stringValue = displayText
             self.animator().alphaValue = 1
         }
+    }
+
+    /// Calculates and updates the pill width based on the text content.
+    private func updateWidth(for text: String) {
+        // Calculate the width needed for the text
+        let font = label.font ?? .systemFont(ofSize: 11, weight: .medium)
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+
+        // Add padding for the stack view insets and spacing
+        // Stack insets: left 10, right 12 | Spinner: 16 | Spacing: 6 | Safety buffer: 8
+        let padding: CGFloat = 10 + 12 + 16 + 6 + 8
+        let targetWidth = textSize.width + padding
+
+        // Clamp to min/max bounds
+        let clampedWidth = max(minWidth, min(maxWidth, targetWidth))
+
+        widthConstraint?.constant = clampedWidth
+        layoutSubtreeIfNeeded()
     }
 
     @discardableResult
@@ -216,9 +253,13 @@ final class ToolIndicatorView: NSView {
     /// Shows the "Generating" indicator.
     func showGenerating() {
         isGenerating = true
-        label.stringValue = "Generating"
+        let displayText = "Generating"
+        label.stringValue = displayText
         spinner.startAnimation(nil)
         isHidden = false
+
+        // Update width for "Generating" text
+        updateWidth(for: displayText)
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.2

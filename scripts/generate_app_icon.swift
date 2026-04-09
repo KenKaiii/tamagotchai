@@ -38,8 +38,12 @@ func drawMascot(in rect: NSRect, ctx: CGContext) {
 
     // Background with rounded corners
     let cornerRadius = rect.width * 0.22
-    let bgPath = CGPath(roundedRect: rect.insetBy(dx: rect.width * 0.02, dy: rect.height * 0.02),
-                        cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+    let bgPath = CGPath(
+        roundedRect: rect.insetBy(dx: rect.width * 0.02, dy: rect.height * 0.02),
+        cornerWidth: cornerRadius,
+        cornerHeight: cornerRadius,
+        transform: nil
+    )
     ctx.setFillColor(bgColor)
     ctx.addPath(bgPath)
     ctx.fillPath()

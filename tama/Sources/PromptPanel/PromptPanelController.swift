@@ -647,12 +647,6 @@ final class PromptPanelController {
         // Hide session list if visible
         panel?.hideSessionList()
 
-        // Show generating indicator immediately
-        panel?.showGeneratingIndicator()
-
-        panel?.mascot.setState(.waiting)
-        MenuBarMood.shared.setActivity(.thinking)
-
         // Capture and clear input immediately so user can start typing next prompt
         let userText = panel?.consumeInput() ?? text
 
@@ -665,6 +659,11 @@ final class PromptPanelController {
             startVoiceCapture()
             return
         }
+
+        // Only show generating indicator if we're actually going to generate a response
+        panel?.showGeneratingIndicator()
+        panel?.mascot.setState(.waiting)
+        MenuBarMood.shared.setActivity(.thinking)
 
         let historyCountBeforeSubmit = conversationHistory.count
         conversationHistory.append(["role": "user", "content": userText])

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("StreamParser")
 struct StreamParserTests {

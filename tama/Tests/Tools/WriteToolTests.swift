@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("WriteTool")
 struct WriteToolTests {
@@ -21,7 +21,10 @@ struct WriteToolTests {
     func writeNewFile() async throws {
         let result = try await tool.execute(args: ["file_path": "hello.txt", "content": "Hello, world!"])
         #expect(result.contains("Wrote"))
-        let written = try String(contentsOfFile: (tempDir as NSString).appendingPathComponent("hello.txt"), encoding: .utf8)
+        let written = try String(
+            contentsOfFile: (tempDir as NSString).appendingPathComponent("hello.txt"),
+            encoding: .utf8
+        )
         #expect(written == "Hello, world!")
         cleanup()
     }
@@ -39,7 +42,10 @@ struct WriteToolTests {
     func overwriteExisting() async throws {
         _ = try await tool.execute(args: ["file_path": "over.txt", "content": "original"])
         _ = try await tool.execute(args: ["file_path": "over.txt", "content": "replaced"])
-        let content = try String(contentsOfFile: (tempDir as NSString).appendingPathComponent("over.txt"), encoding: .utf8)
+        let content = try String(
+            contentsOfFile: (tempDir as NSString).appendingPathComponent("over.txt"),
+            encoding: .utf8
+        )
         #expect(content == "replaced")
         cleanup()
     }

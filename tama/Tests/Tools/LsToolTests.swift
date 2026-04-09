@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("LsTool")
 struct LsToolTests {
@@ -20,10 +20,24 @@ struct LsToolTests {
     @Test("lists directories first then files, sorted")
     func directoriesFirstThenFiles() async throws {
         let fm = FileManager.default
-        try fm.createDirectory(atPath: (tempDir as NSString).appendingPathComponent("beta"), withIntermediateDirectories: true)
-        try fm.createDirectory(atPath: (tempDir as NSString).appendingPathComponent("alpha"), withIntermediateDirectories: true)
-        try "content".write(toFile: (tempDir as NSString).appendingPathComponent("zebra.txt"), atomically: true, encoding: .utf8)
-        try "content".write(toFile: (tempDir as NSString).appendingPathComponent("aardvark.txt"), atomically: true, encoding: .utf8)
+        try fm.createDirectory(
+            atPath: (tempDir as NSString).appendingPathComponent("beta"),
+            withIntermediateDirectories: true
+        )
+        try fm.createDirectory(
+            atPath: (tempDir as NSString).appendingPathComponent("alpha"),
+            withIntermediateDirectories: true
+        )
+        try "content".write(
+            toFile: (tempDir as NSString).appendingPathComponent("zebra.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "content".write(
+            toFile: (tempDir as NSString).appendingPathComponent("aardvark.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let result = try await tool.execute(args: [:])
         let lines = result.components(separatedBy: "\n")
@@ -43,8 +57,16 @@ struct LsToolTests {
 
     @Test("hidden files excluded by default")
     func hiddenFilesExcluded() async throws {
-        try "visible".write(toFile: (tempDir as NSString).appendingPathComponent("visible.txt"), atomically: true, encoding: .utf8)
-        try "hidden".write(toFile: (tempDir as NSString).appendingPathComponent(".hidden"), atomically: true, encoding: .utf8)
+        try "visible".write(
+            toFile: (tempDir as NSString).appendingPathComponent("visible.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "hidden".write(
+            toFile: (tempDir as NSString).appendingPathComponent(".hidden"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let result = try await tool.execute(args: [:])
         #expect(result.contains("visible.txt"))
@@ -54,8 +76,16 @@ struct LsToolTests {
 
     @Test("all flag includes hidden files")
     func allFlagIncludesHidden() async throws {
-        try "visible".write(toFile: (tempDir as NSString).appendingPathComponent("visible.txt"), atomically: true, encoding: .utf8)
-        try "hidden".write(toFile: (tempDir as NSString).appendingPathComponent(".hidden"), atomically: true, encoding: .utf8)
+        try "visible".write(
+            toFile: (tempDir as NSString).appendingPathComponent("visible.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "hidden".write(
+            toFile: (tempDir as NSString).appendingPathComponent(".hidden"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let result = try await tool.execute(args: ["all": true])
         #expect(result.contains("visible.txt"))

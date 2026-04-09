@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("FindTool")
 struct FindToolTests {
@@ -20,10 +20,25 @@ struct FindToolTests {
     @Test("glob pattern matches expected files")
     func globPatternMatches() async throws {
         let fm = FileManager.default
-        try fm.createDirectory(atPath: (tempDir as NSString).appendingPathComponent("src"), withIntermediateDirectories: true)
-        try "code".write(toFile: (tempDir as NSString).appendingPathComponent("src/main.swift"), atomically: true, encoding: .utf8)
-        try "code".write(toFile: (tempDir as NSString).appendingPathComponent("src/helper.swift"), atomically: true, encoding: .utf8)
-        try "text".write(toFile: (tempDir as NSString).appendingPathComponent("src/readme.md"), atomically: true, encoding: .utf8)
+        try fm.createDirectory(
+            atPath: (tempDir as NSString).appendingPathComponent("src"),
+            withIntermediateDirectories: true
+        )
+        try "code".write(
+            toFile: (tempDir as NSString).appendingPathComponent("src/main.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "code".write(
+            toFile: (tempDir as NSString).appendingPathComponent("src/helper.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "text".write(
+            toFile: (tempDir as NSString).appendingPathComponent("src/readme.md"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let result = try await tool.execute(args: ["pattern": "*.swift"])
         #expect(result.contains("main.swift"))
@@ -37,8 +52,16 @@ struct FindToolTests {
         let fm = FileManager.default
         let gitDir = (tempDir as NSString).appendingPathComponent(".git")
         try fm.createDirectory(atPath: gitDir, withIntermediateDirectories: true)
-        try "data".write(toFile: (gitDir as NSString).appendingPathComponent("config"), atomically: true, encoding: .utf8)
-        try "code".write(toFile: (tempDir as NSString).appendingPathComponent("app.swift"), atomically: true, encoding: .utf8)
+        try "data".write(
+            toFile: (gitDir as NSString).appendingPathComponent("config"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "code".write(
+            toFile: (tempDir as NSString).appendingPathComponent("app.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let result = try await tool.execute(args: ["pattern": "*"])
         #expect(result.contains("app.swift"))
@@ -58,8 +81,12 @@ struct FindToolTests {
         let fm = FileManager.default
         let subdir = (tempDir as NSString).appendingPathComponent("many")
         try fm.createDirectory(atPath: subdir, withIntermediateDirectories: true)
-        for i in 0..<120 {
-            try "x".write(toFile: (subdir as NSString).appendingPathComponent("file\(String(format: "%03d", i)).txt"), atomically: true, encoding: .utf8)
+        for i in 0 ..< 120 {
+            try "x".write(
+                toFile: (subdir as NSString).appendingPathComponent("file\(String(format: "%03d", i)).txt"),
+                atomically: true,
+                encoding: .utf8
+            )
         }
 
         let result = try await tool.execute(args: ["pattern": "*.txt"])

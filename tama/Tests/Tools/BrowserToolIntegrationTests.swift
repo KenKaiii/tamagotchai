@@ -296,7 +296,9 @@ struct BrowserToolIntegrationTests {
         _ = try await tool.execute(args: ["action": "evaluate", "text": "'second'"])
         let secondMs = (CFAbsoluteTimeGetCurrent() - start2) * 1000.0
 
-        print("⏱ Connection reuse: first=\(String(format: "%.0f", firstMs))ms, second=\(String(format: "%.0f", secondMs))ms")
+        print(
+            "⏱ Connection reuse: first=\(String(format: "%.0f", firstMs))ms, second=\(String(format: "%.0f", secondMs))ms"
+        )
         #expect(secondMs < 1000, "Second call took \(secondMs)ms — connection may not be reused")
     }
 

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("GrepTool")
 struct GrepToolTests {
@@ -57,7 +57,7 @@ struct GrepToolTests {
     @Test("max_results cap")
     func maxResultsCap() async throws {
         var lines = ""
-        for i in 1...20 {
+        for i in 1 ... 20 {
             lines += "match line \(i)\n"
         }
         try writeFile("many.txt", content: lines)

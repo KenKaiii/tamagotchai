@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
@@ -54,8 +54,14 @@ struct ToolRegistryTests {
                 Issue.record("Missing input_schema for \(def["name"] ?? "unknown")")
                 continue
             }
-            #expect(schema["type"] as? String == "object", "Schema type should be 'object' for \(def["name"] ?? "unknown")")
-            #expect(schema["properties"] is [String: Any], "Schema should have 'properties' for \(def["name"] ?? "unknown")")
+            #expect(
+                schema["type"] as? String == "object",
+                "Schema type should be 'object' for \(def["name"] ?? "unknown")"
+            )
+            #expect(
+                schema["properties"] is [String: Any],
+                "Schema should have 'properties' for \(def["name"] ?? "unknown")"
+            )
         }
     }
 }

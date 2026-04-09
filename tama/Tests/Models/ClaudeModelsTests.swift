@@ -1,5 +1,5 @@
-import Testing
 @testable import Tama
+import Testing
 
 @Suite("ClaudeModels")
 struct ClaudeModelsTests {

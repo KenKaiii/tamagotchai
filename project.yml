@@ -50,6 +50,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.unstablemind.tama
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: 396M7LY29W
+        CODE_SIGN_STYLE: Automatic
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.lifestyle"
         INFOPLIST_KEY_CFBundleDisplayName: Tama
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

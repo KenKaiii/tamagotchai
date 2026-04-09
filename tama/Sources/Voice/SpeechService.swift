@@ -45,6 +45,16 @@ final class SpeechService {
     /// Active generation task (so we can cancel on stop).
     private var generationTask: Task<Void, Never>?
 
+    /// Timer that auto-flushes buffered text when no new chunks arrive for `flushDelay`.
+    /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses
+    /// (between sentences, before tool calls, or at end of response).
+    private var flushTimer: Timer?
+
+    /// Whether we've already sent the first utterance to TTS in this streaming session.
+    /// The first utterance is dispatched eagerly (at a clause boundary or `eagerFlushChars`)
+    /// so that Kokoro can start generating audio while more text streams in.
+    private var hasFlushedFirst = false
+
     /// Serial queue for Kokoro TTS generation. KokoroTTS uses NLTagger internally
     /// (via MisakiSwift G2P) which is not thread-safe and crashes with EXC_BAD_ACCESS
     /// if called concurrently from multiple threads.
@@ -61,6 +71,16 @@ final class SpeechService {
 
     /// Minimum fragment length — shorter pieces are merged to avoid choppy playback.
     private static let minFragmentLength = 20
+
+    /// Minimum character count before the first eager flush.
+    /// Keeps the first TTS chunk large enough for natural-sounding speech
+    /// while still firing well before the full response finishes streaming.
+    private static let eagerFlushChars = 80
+
+    /// How long to wait after the last chunk before auto-flushing the buffer.
+    /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses
+    /// (between sentences, before tool calls, or at end of response).
+    private static let flushDelay: TimeInterval = 0.3
 
     private init() {
         audioEngine.attach(playerNode)
@@ -79,14 +99,98 @@ final class SpeechService {
         streamEnded = false
         pendingUtterances = 0
         streamCompletion = nil
+        hasFlushedFirst = false
+        flushTimer?.invalidate()
+        flushTimer = nil
         logger.info("Streaming speech session started")
     }
 
     /// Feeds a text chunk from the stream. Sentences are spoken as they complete.
+    ///
+    /// Strategy:
+    /// 1. **First flush** — eagerly sent at the first clause/sentence boundary after
+    ///    `eagerFlushChars` so Kokoro starts generating audio immediately.
+    /// 2. **Subsequent flushes** — drained at sentence boundaries for natural pacing.
+    /// 3. **Idle timer** — catches any remaining text after a short pause (e.g. the
+    ///    last partial sentence before a tool call or end of response).
     func feedChunk(_ chunk: String) {
         guard isStreaming else { return }
         streamBuffer += chunk
-        drainSentences()
+
+        if !hasFlushedFirst {
+            tryEagerFlush()
+        } else {
+            drainSentences()
+        }
+
+        scheduleFlush()
+    }
+
+    /// Attempts to flush the buffer eagerly for the first utterance.
+    /// Flushes at the first sentence/clause boundary once the buffer reaches
+    /// `eagerFlushChars`, or at any sentence boundary regardless of length.
+    private func tryEagerFlush() {
+        let cleaned = stripMarkdown(streamBuffer)
+
+        // Try to find a sentence boundary first (works at any length)
+        let range = NSRange(cleaned.startIndex..., in: cleaned)
+        let sentenceMatches = Self.sentencePattern.matches(in: cleaned, options: [], range: range)
+
+        if let lastMatch = sentenceMatches.last {
+            let splitIndex = cleaned.index(
+                cleaned.startIndex,
+                offsetBy: lastMatch.range.location + lastMatch.range.length
+            )
+            let toSpeak = String(cleaned[..<splitIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let remainder = String(cleaned[splitIndex...])
+            streamBuffer = remainder
+            hasFlushedFirst = true
+            if !toSpeak.isEmpty {
+                enqueueSentences(from: toSpeak)
+            }
+            return
+        }
+
+        // No sentence boundary yet — try clause boundary if we have enough text
+        guard cleaned.count >= Self.eagerFlushChars else { return }
+
+        // swiftlint:disable:next force_try
+        let clausePattern = try! NSRegularExpression(pattern: "[,;:—–]\\s+", options: [])
+        let clauseMatches = clausePattern.matches(in: cleaned, options: [], range: range)
+
+        if let lastClause = clauseMatches.last {
+            let splitIndex = cleaned.index(
+                cleaned.startIndex,
+                offsetBy: lastClause.range.location + lastClause.range.length
+            )
+            let toSpeak = String(cleaned[..<splitIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let remainder = String(cleaned[splitIndex...])
+            streamBuffer = remainder
+            hasFlushedFirst = true
+            if !toSpeak.isEmpty {
+                enqueueSentences(from: toSpeak)
+            }
+            return
+        }
+
+        // No boundaries at all — hard flush everything we have
+        let toSpeak = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        streamBuffer = ""
+        hasFlushedFirst = true
+        if !toSpeak.isEmpty {
+            enqueueSentences(from: toSpeak)
+        }
+    }
+
+    /// Restarts the idle-flush timer. Fires when tokens stop arriving for `flushDelay`
+    /// (between sentences, before tool calls, or at end of response).
+    private func scheduleFlush() {
+        flushTimer?.invalidate()
+        flushTimer = Timer.scheduledTimer(withTimeInterval: Self.flushDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.flushBuffer()
+            }
+        }
     }
 
     /// Forces any buffered text to be spoken immediately (e.g. before a tool call pause).
@@ -105,6 +209,8 @@ final class SpeechService {
     func finishStreaming() async {
         guard isStreaming else { return }
         streamEnded = true
+        flushTimer?.invalidate()
+        flushTimer = nil
 
         let remaining = stripMarkdown(streamBuffer).trimmingCharacters(in: .whitespacesAndNewlines)
         streamBuffer = ""
@@ -136,6 +242,9 @@ final class SpeechService {
         streamEnded = false
         streamBuffer = ""
         pendingUtterances = 0
+
+        flushTimer?.invalidate()
+        flushTimer = nil
 
         generationTask?.cancel()
         generationTask = nil

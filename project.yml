@@ -68,8 +68,6 @@ targets:
         product: MLX
       - package: MLXUtilsLibrary
         product: MLXUtilsLibrary
-    entitlements:
-      path: tama/Entitlements/Tama.entitlements
     preBuildScripts:
       - name: SwiftLint
         basedOnDependencyAnalysis: false

@@ -1074,6 +1074,7 @@ private final class InlineScanner {
         let hostComponents = hostPart.split(separator: ".")
 
         guard let tld = hostComponents.last?.lowercased() else { return false }
+        guard hostComponents.count >= 2 else { return false }
 
         let isKnownTLD = InlineScanner.commonTLDs.contains(tld)
         let looksLikeTLD = tld.count >= 2 && tld.allSatisfy(\.isLetter)

@@ -55,7 +55,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Tama needs microphone access for voice wake word detection and speech recognition."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Tama needs microphone access for speech recognition when you hold ⌥Space to speak."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Tama uses speech recognition to transcribe your voice commands."
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "Tama uses accessibility features to interact with other apps on your behalf."
     dependencies:

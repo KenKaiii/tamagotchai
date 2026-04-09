@@ -69,12 +69,14 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$DEVELOPER_ID_NAME" \
             DEVELOPMENT_TEAM=396M7LY29W \
+            CODE_SIGN_ENTITLEMENTS=tama/Entitlements/Tama.entitlements \
             OTHER_CODE_SIGN_FLAGS="--options runtime" \
             clean build
 
       - name: Deep sign all nested code
         run: |
           APP_PATH="build/Build/Products/Release/Tama.app"
+          ENTITLEMENTS="tama/Entitlements/Tama.entitlements"
 
           # Re-sign all nested frameworks and dylibs with hardened runtime
           find "$APP_PATH" -type f -perm +111 -o -name "*.dylib" -o -name "*.framework" | while read -r binary; do
@@ -93,8 +95,9 @@ jobs:
               --sign "$DEVELOPER_ID_NAME" "$fw" || true
           done
 
-          # Finally re-sign the app itself
+          # Finally re-sign the app itself with entitlements
           codesign --force --options runtime --timestamp \
+            --entitlements "$ENTITLEMENTS" \
             --sign "$DEVELOPER_ID_NAME" "$APP_PATH"
 
           # Verify

@@ -18,6 +18,7 @@ struct TamaApp: App {
         MenuBarExtra {
             Button("Open Tama") {
                 ButtonSound.shared.play()
+                DropdownPanelController.closeAnyOpen()
                 PromptPanelController.shared.toggle()
             }
             .keyboardShortcut(.space, modifiers: [.option])

@@ -98,13 +98,15 @@ final class VoiceService: @unchecked Sendable {
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         guard micStatus == .authorized else {
             logger.warning("Cannot start speech capture — microphone permission: \(micStatus.description)")
-            onError?("Microphone permission not granted. Check System Settings > Privacy & Security > Microphone.")
+            let msg = "Microphone permission not granted. Check System Settings > Privacy & Security > Microphone."
+            onError?(msg)
             return
         }
         let speechStatus = SFSpeechRecognizer.authorizationStatus()
         guard speechStatus == .authorized else {
-            logger.warning("Cannot start speech capture — speech recognition permission: \(speechStatus.description)")
-            onError?("Speech recognition permission not granted. Check System Settings > Privacy & Security > Speech Recognition.")
+            logger.warning("Cannot start speech capture — speech permission: \(speechStatus.description)")
+            let msg = "Speech recognition permission not granted. Check System Settings > Privacy & Security."
+            onError?(msg)
             return
         }
 

@@ -12,11 +12,16 @@ private final class StablePanel: NSPanel {
 @MainActor
 enum DropdownPanelController {
     private static let cornerRadius: CGFloat = 20
+    private static var currentPanel: NSPanel?
 
     /// Creates and shows a dropdown panel hosting the given SwiftUI view.
+    /// Closes any existing dropdown panel first.
     /// Returns the created NSPanel so the caller can store and dismiss it later.
     @discardableResult
     static func show(content: some View) -> NSPanel {
+        // Close any existing panel - only one dropdown allowed at a time
+        currentPanel?.close()
+        currentPanel = nil
         let hosting = NSHostingController(rootView: content)
         hosting.view.setFrameSize(hosting.view.fittingSize)
 
@@ -73,6 +78,7 @@ enum DropdownPanelController {
 
         NSApp.activate(ignoringOtherApps: true)
 
+        currentPanel = window
         return window
     }
 
@@ -80,5 +86,11 @@ enum DropdownPanelController {
     static func dismiss(_ panel: inout NSPanel?) {
         panel?.close()
         panel = nil
+    }
+
+    /// Closes any currently open dropdown panel.
+    static func closeAnyOpen() {
+        currentPanel?.close()
+        currentPanel = nil
     }
 }

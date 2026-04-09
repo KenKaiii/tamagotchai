@@ -85,7 +85,8 @@ enum OnboardingController {
             let x = screenFrame.midX - windowSize.width / 2
             let y = screenFrame.midY - windowSize.height / 2
             win.setFrameOrigin(NSPoint(x: x, y: y))
-            logger.debug("Window positioned at (\(x), \(y)) on screen \(screenFrame)")
+            let frameStr = "(\(screenFrame.origin.x), \(screenFrame.origin.y), \(screenFrame.size.width), \(screenFrame.size.height))"
+            logger.debug("Window positioned at (\(x), \(y)) on screen \(frameStr)")
         } else {
             logger.warning("No screen found for window positioning, using default origin")
             win.center() // Fallback to default centering
@@ -101,7 +102,9 @@ enum OnboardingController {
 
         window = win
         startActivationObserver()
-        logger.info("Onboarding window created and shown — isVisible: \(win.isVisible), isKeyWindow: \(win.isKeyWindow)")
+        let visible = win.isVisible
+        let isKey = win.isKeyWindow
+        logger.info("Onboarding window shown — visible: \(visible), key: \(isKey)")
     }
 
     /// Temporarily lowers the window so system dialogs appear on top.

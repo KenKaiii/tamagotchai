@@ -423,7 +423,8 @@ struct OnboardingView: View {
                 .foregroundColor(.white.opacity(0.45))
                 .multilineTextAlignment(.center)
 
-            Text("Your credentials are encrypted and stored securely. You may see a system prompt asking for keychain access — this is normal.")
+            Text("Your credentials are encrypted and stored securely. " +
+                "You may see a system prompt asking for keychain access — this is normal.")
                 .font(.system(size: 9))
                 .foregroundColor(.white.opacity(0.35))
                 .multilineTextAlignment(.center)

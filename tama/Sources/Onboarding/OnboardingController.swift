@@ -80,14 +80,15 @@ enum OnboardingController {
         win.isReleasedWhenClosed = false
 
         // Center on screen
-        if let screen = NSScreen.main {
+        if let screen = NSScreen.main ?? NSScreen.screens.first {
             let screenFrame = screen.visibleFrame
             let x = screenFrame.midX - windowSize.width / 2
             let y = screenFrame.midY - windowSize.height / 2
             win.setFrameOrigin(NSPoint(x: x, y: y))
             logger.debug("Window positioned at (\(x), \(y)) on screen \(screenFrame)")
         } else {
-            logger.warning("No main screen found for window positioning")
+            logger.warning("No screen found for window positioning, using default origin")
+            win.center() // Fallback to default centering
         }
 
         // Show dock icon during onboarding so users can find the app,

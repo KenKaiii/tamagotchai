@@ -8,9 +8,12 @@ private let logger = Logger(
     category: "credentials"
 )
 
-/// Keychain-backed encryption key used by credential stores.
+/// Keychain-backed encryption key used to secure all API credentials.
+/// This key encrypts your Claude, OpenAI, and other provider tokens.
 enum ClaudeCredentials {
-    private static let keychainService = "com.unstablemind.tama"
+    /// Shown in macOS keychain permission prompts.
+    /// Using "Tama" instead of bundle ID for clearer user-facing messages.
+    private static let keychainService = "Tama"
     private static let keychainAccount = "encryption-key"
 
     // Retrieves or generates the encryption key from the macOS Keychain.

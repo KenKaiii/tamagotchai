@@ -1111,6 +1111,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Tama;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Tama uses accessibility features to interact with other apps on your behalf.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tama needs microphone access for voice wake word detection and speech recognition.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Tama uses speech recognition to transcribe your voice commands.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1132,6 +1133,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Tama;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Tama uses accessibility features to interact with other apps on your behalf.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tama needs microphone access for voice wake word detection and speech recognition.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Tama uses speech recognition to transcribe your voice commands.";
 				LD_RUNPATH_SEARCH_PATHS = (

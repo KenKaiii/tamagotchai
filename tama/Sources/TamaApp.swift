@@ -23,9 +23,11 @@ struct TamaApp: App {
             }
             .keyboardShortcut(.space, modifiers: [.option])
 
-            Button("Permissions…") {
+            Divider()
+
+            Button("AI Settings…") {
                 ButtonSound.shared.play()
-                PermissionsWindowController.show()
+                LoginWindowController.show { isLoggedIn = $0 }
             }
 
             Button("Voice Settings…") {
@@ -33,16 +35,16 @@ struct TamaApp: App {
                 VoiceSettingsController.show()
             }
 
-            Button("Check for Updates…") {
+            Button("Permissions…") {
                 ButtonSound.shared.play()
-                UpdateWindowController.show()
+                PermissionsWindowController.show()
             }
 
             Divider()
 
-            Button("AI Settings…") {
+            Button("Check for Updates…") {
                 ButtonSound.shared.play()
-                LoginWindowController.show { isLoggedIn = $0 }
+                UpdateWindowController.show()
             }
 
             #if DEBUG

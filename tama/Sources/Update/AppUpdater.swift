@@ -112,8 +112,20 @@ final class AppUpdater {
                 throw UpdateError.networkError("Invalid response")
             }
 
+            // 404 = no releases published yet, treat as up to date
+            if httpResponse.statusCode == 404 {
+                state = .upToDate(currentVersion: version)
+                logger.info("No releases found (404) — treating as up to date")
+                return
+            }
+
+            // 403 = rate limited
+            if httpResponse.statusCode == 403 {
+                throw UpdateError.networkError("Rate limited — try again later")
+            }
+
             guard httpResponse.statusCode == 200 else {
-                throw UpdateError.networkError("HTTP \(httpResponse.statusCode)")
+                throw UpdateError.networkError("Server returned HTTP \(httpResponse.statusCode)")
             }
 
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
@@ -138,8 +150,21 @@ final class AppUpdater {
         } catch let error as UpdateError {
             state = .failed(error.localizedDescription)
             logger.error("Update check failed: \(error.localizedDescription)")
+        } catch let error as URLError {
+            let message = switch error.code {
+            case .notConnectedToInternet:
+                "No internet connection"
+            case .timedOut:
+                "Request timed out — try again"
+            case .cannotFindHost, .cannotConnectToHost:
+                "Could not reach the update server"
+            default:
+                "Connection error — check your network"
+            }
+            state = .failed(message)
+            logger.error("Update check URL error: \(error.localizedDescription)")
         } catch {
-            state = .failed(error.localizedDescription)
+            state = .failed("Something went wrong — try again")
             logger.error("Update check failed: \(error.localizedDescription)")
         }
     }

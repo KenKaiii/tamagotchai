@@ -33,6 +33,11 @@ struct TamaApp: App {
                 VoiceSettingsController.show()
             }
 
+            Button("Check for Updates…") {
+                ButtonSound.shared.play()
+                UpdateWindowController.show()
+            }
+
             Divider()
 
             Button("AI Settings…") {

@@ -18,6 +18,7 @@
 		10470E23C60CE7C35FFFABCF /* NSScreen+Notch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D476EB3C648D9AE27E52AE /* NSScreen+Notch.swift */; };
 		12182B22A468CEB380D9DD06 /* ImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3985C97D4A245429D23027B /* ImageCache.swift */; };
 		14945D14D864182C069A7B63 /* AnimatedTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59F4E13C2164F5F94AC703A /* AnimatedTabBar.swift */; };
+		185C243BD3C16D7404A965CA /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C9A6E115CEFACFE21776D3 /* AppUpdater.swift */; };
 		18D7C5E291D282CE2731F04A /* MenuBarMood.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0D725971E11133C103DF8C /* MenuBarMood.swift */; };
 		1AA3BFE62FACA18EB16BEB70 /* ReadTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2471A6665C568192C555A3E4 /* ReadTool.swift */; };
 		1ADEE673AC767A09D70AB321 /* TaskTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4718B1305B6BFB22203FDA /* TaskTool.swift */; };
@@ -110,6 +111,7 @@
 		C2A07FA358181701C464B8BD /* GrepToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740CAC1A3674E17EE5809517 /* GrepToolTests.swift */; };
 		C2AB48EA302D47AFA3713457 /* ToolIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A847B7148483C08591F2377F /* ToolIndicatorView.swift */; };
 		C3F64B784A6B550CD850E7AD /* FloatingPanel+Lists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34B9A1FAB0E1E47B7F00E82B /* FloatingPanel+Lists.swift */; };
+		C4297BF9ECAF486C849B8B3A /* SystemPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC4070C5E78D9FED54EB732 /* SystemPrompt.swift */; };
 		C6FB77969233DF4C0A28D01A /* ResponseTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A919EE25049F8E1C243ABF /* ResponseTextView.swift */; };
 		C979EFDEF5D5EF9AC6DE67FD /* TaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55003A7865F98271C0D0499E /* TaskListView.swift */; };
 		CD431FAF2C453F3065435140 /* OnboardingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957F767535995555B98E8B66 /* OnboardingController.swift */; };
@@ -118,6 +120,7 @@
 		D03C2306AC9F70BD06FA208B /* PanelToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C375B175FB165A4A8A21BD2 /* PanelToolRegistry.swift */; };
 		D3A03667EAFD2FCE35E0D937 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524A57012550F1FB19D9E604 /* SpeechService.swift */; };
 		D47B81E0B34D67C77B7907E0 /* EditToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59C041EB0310E04A8F99A22F /* EditToolTests.swift */; };
+		D4B4AB31FA3CDAF2D05D09CE /* UpdateWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E835B611E022E240DD8D83 /* UpdateWindowController.swift */; };
 		D5B010A58187A0F3604AA7D7 /* ListSchedulesTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519C2A3082C92E164C035070 /* ListSchedulesTool.swift */; };
 		D66DB553FEEEBDFD0720D538 /* StreamParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BE65AA1CF2B2D95CCF9DB7 /* StreamParserTests.swift */; };
 		D6786EB4F0050EB4260CE5D3 /* FloatingPanel+Response.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8A11B848939237B5F7075F /* FloatingPanel+Response.swift */; };
@@ -131,6 +134,7 @@
 		ED099CFB60C3BC0A2C311325 /* PermissionsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16303EB6CB24511A24F14ED5 /* PermissionsWindowController.swift */; };
 		F1A5B43255EFF60E0A27AF7D /* ModelRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27346B8DC36B87921711FC2C /* ModelRegistry.swift */; };
 		F2BFC3932201C5761288DF3E /* BashToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EEF45A79FB5C41775E47CC9 /* BashToolTests.swift */; };
+		FA6EAB03B72D959986CB1549 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C005F78A77530A4204309D22 /* UpdateView.swift */; };
 		FAB5F04C57BAF3D56B5AC2D9 /* MascotState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5024A2FE1F0572622CBD589A /* MascotState.swift */; };
 		FD410A6901415612CBBDA01C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 069075C7C24CCF529C627912 /* Assets.xcassets */; };
 		FF09DA4583247F6121E8381B /* MascotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DAF4D3233A25FE4D56FA0CB /* MascotView.swift */; };
@@ -248,6 +252,7 @@
 		9985FD9859E2D7D468EADAD7 /* NightShiftTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NightShiftTool.swift; sourceTree = "<group>"; };
 		9A61533DA35E3A06CF7227D7 /* AgentTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTool.swift; sourceTree = "<group>"; };
 		9B2821E890A4951FA6DFEE5B /* VoiceSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettingsController.swift; sourceTree = "<group>"; };
+		9CC4070C5E78D9FED54EB732 /* SystemPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPrompt.swift; sourceTree = "<group>"; };
 		A4E8393B77342C50592D3525 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		A847B7148483C08591F2377F /* ToolIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolIndicatorView.swift; sourceTree = "<group>"; };
 		AEE5D367A0817144663B9845 /* FindToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindToolTests.swift; sourceTree = "<group>"; };
@@ -258,6 +263,7 @@
 		B7D5D52F4AA20CD480728E6D /* WriteTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteTool.swift; sourceTree = "<group>"; };
 		BAEDAFFA6DC7B0F7394D6B16 /* CodexRequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRequestBuilder.swift; sourceTree = "<group>"; };
 		BBA2077E43B2E33FE903E16D /* PanelTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelTool.swift; sourceTree = "<group>"; };
+		C005F78A77530A4204309D22 /* UpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateView.swift; sourceTree = "<group>"; };
 		C268FDAD3692A0D7067759E7 /* TogglePanelTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TogglePanelTool.swift; sourceTree = "<group>"; };
 		C3985C97D4A245429D23027B /* ImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCache.swift; sourceTree = "<group>"; };
 		C3C2F60ACFB35424A2DDA15D /* ClipboardHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryView.swift; sourceTree = "<group>"; };
@@ -281,7 +287,9 @@
 		DCDFBCCF2C2B268E7092C6F0 /* CreateReminderTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateReminderTool.swift; sourceTree = "<group>"; };
 		DD94AD31B37B4BD394DF8891 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
 		DDA24AF8A50BCE6686934553 /* CreateRoutineTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateRoutineTool.swift; sourceTree = "<group>"; };
+		E0C9A6E115CEFACFE21776D3 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		E11E593524464E1005E8FCFF /* SkillStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillStore.swift; sourceTree = "<group>"; };
+		E8E835B611E022E240DD8D83 /* UpdateWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateWindowController.swift; sourceTree = "<group>"; };
 		E8EB58F463546341A17A9D3A /* TamaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TamaApp.swift; sourceTree = "<group>"; };
 		EB3AE14DA41F12BF07B89219 /* KeepAwakeTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeepAwakeTool.swift; sourceTree = "<group>"; };
 		ECED08CC04BDFFF073C9280D /* ClaudeCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCredentials.swift; sourceTree = "<group>"; };
@@ -436,6 +444,16 @@
 			path = Extensions;
 			sourceTree = "<group>";
 		};
+		7F192016043ADA147DFC1527 /* Update */ = {
+			isa = PBXGroup;
+			children = (
+				E0C9A6E115CEFACFE21776D3 /* AppUpdater.swift */,
+				C005F78A77530A4204309D22 /* UpdateView.swift */,
+				E8E835B611E022E240DD8D83 /* UpdateWindowController.swift */,
+			);
+			path = Update;
+			sourceTree = "<group>";
+		};
 		90FEEA307632FBA9F949AABF /* Browser */ = {
 			isa = PBXGroup;
 			children = (
@@ -472,6 +490,7 @@
 				37DF34F8FB46A8639214668E /* OpenAIStreamParser.swift */,
 				F0703C309F4DE4DFF9D571A8 /* ProviderStore.swift */,
 				57F1E2471842ABD8131A6FD5 /* StreamParser.swift */,
+				9CC4070C5E78D9FED54EB732 /* SystemPrompt.swift */,
 				A3157E5BD63F0B7415CD94F4 /* Tools */,
 			);
 			path = AI;
@@ -599,6 +618,7 @@
 				289AAB1A096D1C25B9FB9CBC /* Tasks */,
 				BA5B3CC5500087AB52BC9574 /* Tools */,
 				35068FB8DA81D257B2FAC45C /* UI */,
+				7F192016043ADA147DFC1527 /* Update */,
 				E5EC9E5FCD7F315FFE632AEB /* Utilities */,
 				DD20D650DC9404B5BF48EC16 /* Voice */,
 			);
@@ -839,6 +859,7 @@
 				0E3B1473E0BAAA0E58CEF15A /* AgentTool.swift in Sources */,
 				14945D14D864182C069A7B63 /* AnimatedTabBar.swift in Sources */,
 				79109F066CB6001C43C4C548 /* AppError.swift in Sources */,
+				185C243BD3C16D7404A965CA /* AppUpdater.swift in Sources */,
 				7A64850465E110A6E3A076C3 /* AudioWaveformView.swift in Sources */,
 				58975CC2758636BACAEA1B0A /* BashTool.swift in Sources */,
 				1D9757245057ACEDF781A5AA /* BrowserManager.swift in Sources */,
@@ -921,6 +942,7 @@
 				D3A03667EAFD2FCE35E0D937 /* SpeechService.swift in Sources */,
 				CD783C6A6B12FE2E59F85805 /* StreamParser.swift in Sources */,
 				54E795594E31777DBCBFAD0D /* SystemAudioMuter.swift in Sources */,
+				C4297BF9ECAF486C849B8B3A /* SystemPrompt.swift in Sources */,
 				7CA285BA3505472BE983560F /* TamaApp.swift in Sources */,
 				88CE8835AAD9350269F21A43 /* TaskDetailView.swift in Sources */,
 				99E89CC18A4D56BBB0BED927 /* TaskItem.swift in Sources */,
@@ -932,6 +954,8 @@
 				C2AB48EA302D47AFA3713457 /* ToolIndicatorView.swift in Sources */,
 				504092E774E94DCD60B9F1CF /* ToolListView.swift in Sources */,
 				6F856E718A785EF0818F435C /* ToolRowView.swift in Sources */,
+				FA6EAB03B72D959986CB1549 /* UpdateView.swift in Sources */,
+				D4B4AB31FA3CDAF2D05D09CE /* UpdateWindowController.swift in Sources */,
 				45FDFCA1692CC99061DE32E5 /* VoiceService.swift in Sources */,
 				318B863DA4DB04F31E0BEF37 /* VoiceSettingsController.swift in Sources */,
 				9787F7E1C93997F9917ECB55 /* VoiceSettingsView.swift in Sources */,
@@ -1134,6 +1158,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 396M7LY29W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Tama;
@@ -1146,6 +1171,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.unstablemind.tama;
 				SDKROOT = macosx;
 			};
@@ -1158,6 +1184,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 396M7LY29W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Tama;
@@ -1170,6 +1197,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.unstablemind.tama;
 				SDKROOT = macosx;
 			};

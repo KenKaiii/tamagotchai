@@ -61,6 +61,7 @@ jobs:
 
       - name: Build app
         run: |
+          VERSION=$(echo "${GITHUB_REF_NAME}" | sed 's/^v//')
           xcodebuild -project Tama.xcodeproj \
             -scheme Tama \
             -configuration Release \
@@ -70,6 +71,8 @@ jobs:
             CODE_SIGN_IDENTITY="$DEVELOPER_ID_NAME" \
             DEVELOPMENT_TEAM=396M7LY29W \
             OTHER_CODE_SIGN_FLAGS="--options runtime" \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$VERSION" \
             clean build
 
       - name: Deep sign all nested code

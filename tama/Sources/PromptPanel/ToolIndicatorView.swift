@@ -128,17 +128,8 @@ final class ToolIndicatorView: NSView {
             return query.isEmpty ? "Searching the web…" : "Searching  \(query)"
         case "browser":
             return browserDisplayName(args: args)
-        case "create_reminder":
-            let name = compact(args["name"], max: 28)
-            return name.isEmpty ? "Setting reminder…" : "Reminder  \(name)"
-        case "create_routine":
-            let name = compact(args["name"], max: 28)
-            return name.isEmpty ? "Setting routine…" : "Routine  \(name)"
-        case "list_schedules":
-            return "Checking schedules…"
-        case "delete_schedule":
-            let name = compact(args["name"], max: 28)
-            return name.isEmpty ? "Removing schedule…" : "Removing  \(name)"
+        case "create_reminder", "create_routine", "list_schedules", "delete_schedule":
+            return schedulingDisplayName(toolName, args: args)
         case "task":
             return "Managing tasks…"
         case "skill":
@@ -146,6 +137,24 @@ final class ToolIndicatorView: NSView {
             return skillName.isEmpty ? "Using skill…" : "Skill  \(skillName)"
         default:
             return "Working…"
+        }
+    }
+
+    // MARK: - Scheduling Actions
+
+    private static func schedulingDisplayName(_ toolName: String, args: [String: String]) -> String {
+        switch toolName {
+        case "create_reminder":
+            let name = compact(args["name"], max: 28)
+            return name.isEmpty ? "Setting reminder…" : "Reminder  \(name)"
+        case "create_routine":
+            let name = compact(args["name"], max: 28)
+            return name.isEmpty ? "Setting routine…" : "Routine  \(name)"
+        case "delete_schedule":
+            let name = compact(args["name"], max: 28)
+            return name.isEmpty ? "Removing schedule…" : "Removing  \(name)"
+        default:
+            return "Checking schedules…"
         }
     }
 

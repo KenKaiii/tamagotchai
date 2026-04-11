@@ -947,10 +947,42 @@ final class PromptPanelController {
     }
 
     /// Opens the panel and loads the given session into the conversation view.
+    /// Skips the session list display to avoid animation conflicts with restoreConversation.
     func openSession(_ session: ChatSession) {
         logger.info("Opening session from notification: '\(session.title)'")
-        showPanel()
+        NotchActivityIndicator.removeProcess(id: "chat-agent")
+
+        ttsUnloadTask?.cancel()
+        ttsUnloadTask = nil
+
+        activeStreamTask?.cancel()
+        activeStreamTask = nil
+        activeAgentTask = nil
+        SpeechService.shared.stop()
+        VoiceService.shared.stopFollowUpCapture()
+        panel?.hideToolIndicator()
+        panel?.hideThinkingIndicator()
+        MenuBarMood.shared.setActivity(nil)
+
+        isDismissedByAgent = false
+        isPanelDismissed = false
+        currentTab = .chats
+        ensurePanel()
+        conversationHistory = []
+        panel?.present()
+
+        // Make tab bar and divider visible — restoreConversation expects them
+        // to already be showing (normally set by showSessionList).
+        panel?.dividerContainer.isHidden = false
+        panel?.dividerContainer.alphaValue = 1
+        panel?.tabBarContainer.isHidden = false
+        panel?.tabBarContainer.alphaValue = 1
+
+        // Load session directly — no session list animation to conflict with.
         loadSession(session)
+
+        // Start voice capture so the user can speak or type
+        startVoiceCapture()
     }
 
     /// Handles the agent dismissing itself (user requested panel close).

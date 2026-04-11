@@ -53,6 +53,7 @@ targets:
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_ENTITLEMENTS: tama/Entitlements/Tama.entitlements
         DEVELOPMENT_TEAM: 396M7LY29W
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.lifestyle"

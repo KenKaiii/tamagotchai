@@ -132,4 +132,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     ) {
         completionHandler([.banner, .sound])
     }
+
+    // Handle notification tap — open the associated chat session if available
+    func userNotificationCenter(
+        _: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        if let sessionIdString = userInfo["sessionId"] as? String,
+           let sessionId = UUID(uuidString: sessionIdString)
+        {
+            Task { @MainActor in
+                if let session = SessionStore.shared.session(for: sessionId) {
+                    logger.info("Notification tapped — opening session '\(session.title)'")
+                    PromptPanelController.shared.openSession(session)
+                }
+            }
+        }
+        completionHandler()
+    }
 }

@@ -917,21 +917,40 @@ final class PromptPanelController {
         guard !reply.isEmpty else { return }
 
         logger.info("Panel dismissed — showing background reply notification")
-        NotchNotificationPresenter.showAgentReply(message: reply)
 
+        // Chat sessions open the panel with the session loaded on tap;
+        // routines/reminders open the detail modal (default behavior).
+        NotchNotificationPresenter.showAgentReply(message: reply) { [weak self] in
+            guard let self,
+                  let session = SessionStore.shared.session(for: capturedSessionId)
+            else { return }
+            openSession(session)
+        }
+
+        // System notification — include session ID so tapping it can also
+        // open the correct session.
+        let notificationId = capturedSessionId.uuidString
         Task {
             let content = UNMutableNotificationContent()
             content.title = "Tama"
             content.body = String(reply.prefix(256))
             content.sound = .default
+            content.userInfo = ["sessionId": notificationId]
             let request = UNNotificationRequest(
-                identifier: UUID().uuidString,
+                identifier: notificationId,
                 content: content,
                 trigger: nil
             )
             try? await UNUserNotificationCenter.current().add(request)
         }
         MenuBarMood.shared.setActivity(nil)
+    }
+
+    /// Opens the panel and loads the given session into the conversation view.
+    func openSession(_ session: ChatSession) {
+        logger.info("Opening session from notification: '\(session.title)'")
+        showPanel()
+        loadSession(session)
     }
 
     /// Handles the agent dismissing itself (user requested panel close).

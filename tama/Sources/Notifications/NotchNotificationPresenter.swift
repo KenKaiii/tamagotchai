@@ -93,12 +93,16 @@ enum NotchNotificationPresenter {
     }
 
     /// Show an agent reply notification (when panel was dismissed during processing).
-    static func showAgentReply(message: String) {
+    /// - Parameters:
+    ///   - message: The reply text to display.
+    ///   - onTap: Custom tap handler. When nil, tapping opens the detail modal.
+    static func showAgentReply(message: String, onTap: (() -> Void)? = nil) {
         logger.info("Showing toast agent reply")
         showToast(
             title: "Tama",
             subtitle: message,
-            duration: 6
+            duration: 6,
+            customOnTap: onTap
         )
     }
 
@@ -152,7 +156,8 @@ enum NotchNotificationPresenter {
     private static func showToast(
         title: String,
         subtitle: String,
-        duration: TimeInterval
+        duration: TimeInterval,
+        customOnTap: (() -> Void)? = nil
     ) {
         playNotificationSound()
 
@@ -172,7 +177,8 @@ enum NotchNotificationPresenter {
                 screen: screen,
                 title: title,
                 subtitle: subtitle,
-                duration: duration
+                duration: duration,
+                customOnTap: customOnTap
             )
         } else {
             showStackedNotification(
@@ -180,7 +186,8 @@ enum NotchNotificationPresenter {
                 screen: screen,
                 title: title,
                 subtitle: subtitle,
-                duration: duration
+                duration: duration,
+                customOnTap: customOnTap
             )
         }
 
@@ -195,7 +202,8 @@ enum NotchNotificationPresenter {
         screen: NSScreen,
         title: String,
         subtitle: String,
-        duration: TimeInterval
+        duration: TimeInterval,
+        customOnTap: (() -> Void)? = nil
     ) {
         let notchSize = screen.notchSize
         let screenFrame = screen.frame
@@ -299,7 +307,11 @@ enum NotchNotificationPresenter {
 
         let tapHandler = {
             dismissNotification(id: id)
-            NotificationDetailPanel.show(title: title, body: subtitle)
+            if let customOnTap {
+                customOnTap()
+            } else {
+                NotificationDetailPanel.show(title: title, body: subtitle)
+            }
         }
 
         let displayed = DisplayedNotification(
@@ -329,7 +341,8 @@ enum NotchNotificationPresenter {
         screen: NSScreen,
         title: String,
         subtitle: String,
-        duration: TimeInterval
+        duration: TimeInterval,
+        customOnTap: (() -> Void)? = nil
     ) {
         let contentView = buildContentView(title: title, subtitle: subtitle)
         let contentSize = contentView.fittingSize
@@ -388,7 +401,11 @@ enum NotchNotificationPresenter {
 
         let tapHandler = {
             dismissNotification(id: id)
-            NotificationDetailPanel.show(title: title, body: subtitle)
+            if let customOnTap {
+                customOnTap()
+            } else {
+                NotificationDetailPanel.show(title: title, body: subtitle)
+            }
         }
 
         let displayed = DisplayedNotification(

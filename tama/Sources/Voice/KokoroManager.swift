@@ -190,8 +190,8 @@ final class KokoroManager: ObservableObject {
         ttsEngine = nil
         loadedVoices.removeAll()
         // MLX caches Metal GPU buffers aggressively — must flush explicitly
-        MLX.Memory.cacheLimit = 0
-        MLX.Memory.clearCache()
+        Memory.cacheLimit = 0
+        Memory.clearCache()
         logger.info("Unloaded TTS engine (was loaded: \(hadEngine)), \(voiceCount) voice(s), GPU cache cleared")
     }
 

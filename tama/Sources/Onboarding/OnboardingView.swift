@@ -16,6 +16,7 @@ enum OnboardingStep: Int, CaseIterable {
     case permissions
     case login
     case voice
+    case howToUse
     case ready
 }
 
@@ -42,6 +43,9 @@ struct OnboardingView: View {
     @State private var validatingProvider: AIProvider?
     @State private var isAuthenticating = false
     @State private var loginError: String?
+
+    // How to Use
+    @State private var howToChecks: Set<Int> = []
 
     // Voice
     @ObservedObject private var kokoro = KokoroManager.shared
@@ -103,6 +107,8 @@ struct OnboardingView: View {
                     loginStep
                 case .voice:
                     voiceStep
+                case .howToUse:
+                    howToUseStep
                 case .ready:
                     readyStep
                 }
@@ -120,7 +126,7 @@ struct OnboardingView: View {
             // Navigation
             navigationBar
         }
-        .frame(width: 420, height: 580)
+        .frame(width: 420, height: 700)
     }
 
     // MARK: - Step Indicator
@@ -719,6 +725,107 @@ struct OnboardingView: View {
         .padding(.horizontal, 14)
     }
 
+    // MARK: - How to Use
+
+    private var howToUseStep: some View {
+        VStack(spacing: 0) {
+            Text("How to Use Tama")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.95))
+                .padding(.bottom, 8)
+
+            Text("A few things to know before you start.")
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.45))
+                .padding(.bottom, 16)
+
+            VStack(spacing: 1) {
+                howToRow(
+                    index: 0,
+                    icon: "⌥",
+                    title: "Option + Space",
+                    description: "Opens the prompt panel from anywhere on your Mac."
+                )
+                Divider().opacity(0.3).padding(.horizontal, 14)
+                howToRow(
+                    index: 1,
+                    icon: "⌨",
+                    title: "Type or talk",
+                    description: "Just start typing, or speak — Tama picks up whichever you use."
+                )
+                Divider().opacity(0.3).padding(.horizontal, 14)
+                howToRow(
+                    index: 2,
+                    icon: "⎋",
+                    title: "Escape key",
+                    description: "Stops the agent, goes back, or dismisses the panel."
+                )
+                Divider().opacity(0.3).padding(.horizontal, 14)
+                howToRow(
+                    index: 3,
+                    icon: "🔔",
+                    title: "Reminders & routines",
+                    description: "Tama can remind you of things or run tasks on a schedule."
+                )
+                Divider().opacity(0.3).padding(.horizontal, 14)
+                howToRow(
+                    index: 4,
+                    icon: "🌐",
+                    title: "Files, web & more",
+                    description: "Tama can read/write files, search the web, and automate browsers."
+                )
+                Divider().opacity(0.3).padding(.horizontal, 14)
+                howToRow(
+                    index: 5,
+                    icon: "📑",
+                    title: "Tabs at the top",
+                    description: "Chats, Reminders, Routines, Tasks, Skills, and Tools — all in one panel."
+                )
+            }
+        }
+        .padding(.horizontal, 14)
+    }
+
+    private func howToRow(index: Int, icon: String, title: String, description: String) -> some View {
+        let checked = howToChecks.contains(index)
+        return HStack(spacing: 10) {
+            Text(icon)
+                .font(.system(size: 14))
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(checked ? 0.5 : 0.9))
+                Text(description)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(checked ? 0.3 : 0.45))
+            }
+
+            Spacer()
+
+            Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 14))
+                .foregroundColor(checked ? .green.opacity(0.9) : .white.opacity(0.3))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            ButtonSound.shared.play()
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if checked {
+                    howToChecks.remove(index)
+                } else {
+                    howToChecks.insert(index)
+                }
+            }
+        }
+        .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+
     // MARK: - Ready
 
     private var readyStep: some View {
@@ -806,6 +913,14 @@ struct OnboardingView: View {
                     }
                 }
                 .opacity(0.5)
+            } else if step == .howToUse {
+                GlassButton("Next", isPrimary: true) {
+                    direction = 1
+                    withAnimation {
+                        step = OnboardingStep(rawValue: step.rawValue + 1) ?? .ready
+                    }
+                }
+                .opacity(howToChecks.count == 6 ? 1.0 : 0.5)
             } else {
                 GlassButton("Next", isPrimary: true) {
                     direction = 1

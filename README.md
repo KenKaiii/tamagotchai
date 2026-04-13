@@ -1,7 +1,7 @@
-# 🐱 Tama
+# 🐱 Tama Agent
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/KenKaiii/tamagotchai/main/assets/icon_1024.png" alt="Tama" width="200">
+  <img src="https://raw.githubusercontent.com/KenKaiii/tamagotchai/main/assets/icon_1024.png" alt="Tama Agent" width="200">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
 
-**Tama** is a macOS menu-bar AI assistant powered by Claude. It lives in your menu bar with an animated mascot, opens a floating prompt panel with ⌥Space, and runs a full agentic tool loop — bash, file editing, web fetching, scheduling, and more. Built natively in Swift 6 with AppKit and SwiftUI.
+**Tama Agent** is a macOS menu-bar AI assistant powered by Claude. It lives in your menu bar with an animated mascot, opens a floating prompt panel with ⌥Space, and runs a full agentic tool loop — bash, file editing, web fetching, scheduling, and more. Built natively in Swift 6 with AppKit and SwiftUI.
 
 No dock icon. No Electron. Just a lightweight, always-there AI assistant.
 
@@ -25,7 +25,7 @@ No dock icon. No Electron. Just a lightweight, always-there AI assistant.
 
 AI assistants shouldn't be a browser tab you have to find. They should be *right there* — one hotkey away, living alongside your workflow.
 
-Tama sits in your menu bar, ready to go. Hit ⌥Space and a floating panel appears over whatever you're doing. Ask it something, tell it to run a command, edit a file, fetch a webpage, set a reminder. It uses Claude under the hood with a full agent loop that can chain tools together to complete multi-step tasks.
+Tama Agent sits in your menu bar, ready to go. Hit ⌥Space and a floating panel appears over whatever you're doing. Ask it something, tell it to run a command, edit a file, fetch a webpage, set a reminder. It uses Claude under the hood with a full agent loop that can chain tools together to complete multi-step tasks.
 
 Plus it has a little animated mascot. Because why not.
 
@@ -37,7 +37,7 @@ Plus it has a little animated mascot. Because why not.
 Hit ⌥Space from anywhere. A glass-styled floating panel appears over your current app. Type a message, get a streamed response with full markdown rendering, syntax-highlighted code blocks, and copy buttons. It stays out of your way when you don't need it.
 
 ### Full agent tool loop
-Not just chat. Tama runs a multi-turn agent loop (up to 50 turns) with real tools:
+Not just chat. Tama Agent runs a multi-turn agent loop (up to 50 turns) with real tools:
 - **Bash** — run shell commands directly
 - **Read / Write / Edit** — view and modify files on your system
 - **Grep / Find / Ls** — search and navigate your filesystem

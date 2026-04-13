@@ -90,43 +90,14 @@ That's it.
 
 ## 🛠️ For developers
 
-### Requirements
-- macOS 15.0+
-- Xcode 16+ with Swift 6.0
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-
-### Build from source
-
 ```bash
 git clone https://github.com/KenKaiii/tamagotchai.git
 cd tamagotchai
-
-# Generate Xcode project
 xcodegen generate
-
-# Build
 xcodebuild -project Tama.xcodeproj -scheme Tama -configuration Debug build
 ```
 
-### Stack
-- **Language:** Swift 6.0 (strict concurrency)
-- **Platform:** macOS 15+, LSUIElement menu-bar app
-- **UI:** AppKit (NSPanel, NSTextView) + SwiftUI
-- **Dependencies:** RiveRuntime (mascot animations), Highlightr (syntax highlighting), Kokoro (text-to-speech), MLX (on-device ML)
-- **Build:** XcodeGen (`project.yml` → .xcodeproj), SPM for packages
-
-### Lint & format
-
-```bash
-# Lint
-swiftlint lint --config .swiftlint.yml
-
-# Format (check)
-swiftformat --lint --config .swiftformat Tama/Sources
-
-# Format (auto-fix)
-swiftformat --config .swiftformat Tama/Sources
-```
+Stack: Swift 6, macOS 15+, AppKit + SwiftUI
 
 ---
 

@@ -73,9 +73,9 @@ final class SpeechService {
     private static let minFragmentLength = 20
 
     /// Minimum character count before the first eager flush.
-    /// Keeps the first TTS chunk large enough for natural-sounding speech
-    /// while still firing well before the full response finishes streaming.
-    private static let eagerFlushChars = 80
+    /// Lower = faster time-to-first-audio, higher = more natural speech.
+    /// 30 chars (~5-6 words) is enough for Fish Audio to produce natural speech.
+    private static let eagerFlushChars = 30
 
     /// How long to wait after the last chunk before auto-flushing the buffer.
     /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses

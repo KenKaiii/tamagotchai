@@ -58,6 +58,7 @@
 		5BE0848E7002D0F7C8C2CD1C /* FloatingPanel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49A58F3146578793EB1B3CC /* FloatingPanel+Presentation.swift */; };
 		5CAD8217511B51035DED58ED /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D70039C96EBE77D2760A254 /* SessionListView.swift */; };
 		5E6EB4937046A79883B3E78A /* ProviderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0703C309F4DE4DFF9D571A8 /* ProviderStore.swift */; };
+		5F2E019173E8F3DA76A1F4C4 /* NotchCallButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11FCF46DF7D86765B9761E /* NotchCallButton.swift */; };
 		625824754BD0FCCB029967B0 /* KokoroSwift in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 1973EFBFCAF1952DD3D7CF0C /* KokoroSwift */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		633449D95087F62ACF27A404 /* PermissionsChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CA6FAF0DB5C7D2F9C43DCB /* PermissionsChecker.swift */; };
 		684CC7B81C26FC5A5E7B7535 /* WriteTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D5D52F4AA20CD480728E6D /* WriteTool.swift */; };
@@ -242,6 +243,7 @@
 		750076651D04902913F96C10 /* OAuthCredentialsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthCredentialsTests.swift; sourceTree = "<group>"; };
 		76A35BE0979A54CBD07A048E /* PermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsView.swift; sourceTree = "<group>"; };
 		77FBE01E789E92890A5EF4DE /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		7A11FCF46DF7D86765B9761E /* NotchCallButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchCallButton.swift; sourceTree = "<group>"; };
 		7C961CF3321997314154D66B /* GrepTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrepTool.swift; sourceTree = "<group>"; };
 		7F0EB70CA69385231558C97C /* SystemAudioMuter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioMuter.swift; sourceTree = "<group>"; };
 		80C8A3B117ECF582CBFA4770 /* AgentLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLoop.swift; sourceTree = "<group>"; };
@@ -655,6 +657,7 @@
 			isa = PBXGroup;
 			children = (
 				2FE6904A640A73CE3A9F65ED /* NotchActivityIndicator.swift */,
+				7A11FCF46DF7D86765B9761E /* NotchCallButton.swift */,
 				10585A9AA99FC241A19CCF03 /* NotchNotificationPresenter.swift */,
 				D339201F4BB4EF66AE8B18AA /* NotchShape.swift */,
 				49A16FE12DF8079043A80BE5 /* NotificationDetailPanel.swift */,
@@ -914,6 +917,7 @@
 				10470E23C60CE7C35FFFABCF /* NSScreen+Notch.swift in Sources */,
 				DE6054372760E743D6A65DBF /* NightShiftTool.swift in Sources */,
 				9AD52DC621C9756E5FE40E08 /* NotchActivityIndicator.swift in Sources */,
+				5F2E019173E8F3DA76A1F4C4 /* NotchCallButton.swift in Sources */,
 				1EC9D86E2C4AFE58F6FCB7A0 /* NotchNotificationPresenter.swift in Sources */,
 				89492D9BFA48A272C1FE2C58 /* NotchShape.swift in Sources */,
 				8205CC009D1EE20318FFAD61 /* NotificationDetailPanel.swift in Sources */,

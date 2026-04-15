@@ -159,6 +159,7 @@ enum NotchNotificationPresenter {
         duration: TimeInterval,
         customOnTap: (() -> Void)? = nil
     ) {
+        NotchOverlayTracker.overlayDidShow()
         playNotificationSound()
 
         guard let screen = NSScreen.main else { return }
@@ -587,6 +588,7 @@ enum NotchNotificationPresenter {
     private static func dismissNotification(id: UUID) {
         guard let index = activeNotifications.firstIndex(where: { $0.id == id }) else { return }
 
+        NotchOverlayTracker.overlayDidHide()
         let notification = activeNotifications.remove(at: index)
         notification.timer?.invalidate()
 

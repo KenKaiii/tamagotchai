@@ -105,30 +105,7 @@ final class WebFetchTool: AgentTool {
             )
         }
 
-        // Strip HTML tags.
-        text = text.replacingOccurrences(
-            of: "<[^>]+>",
-            with: "",
-            options: .regularExpression
-        )
-
-        // Decode common HTML entities.
-        text = text.replacingOccurrences(of: "&amp;", with: "&")
-        text = text.replacingOccurrences(of: "&lt;", with: "<")
-        text = text.replacingOccurrences(of: "&gt;", with: ">")
-        text = text.replacingOccurrences(of: "&quot;", with: "\"")
-        text = text.replacingOccurrences(of: "&#39;", with: "'")
-        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
-
-        // Collapse multiple blank lines into single blank lines.
-        text = text.replacingOccurrences(
-            of: "\\n{3,}",
-            with: "\n\n",
-            options: .regularExpression
-        )
-
-        // Trim whitespace.
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = Self.extractReadableText(from: text)
 
         // Truncate if needed.
         if text.count > maxLength {
@@ -139,6 +116,102 @@ final class WebFetchTool: AgentTool {
 
         logger.info("Fetch complete: \(text.count) chars, truncated=false")
         return text
+    }
+
+    // MARK: - Content Extraction
+
+    /// Extracts readable text from raw HTML by removing scripts, styles,
+    /// navigation elements, and other non-content blocks before stripping tags.
+    private static func extractReadableText(from html: String) -> String {
+        var text = html
+
+        // Remove entire <script>...</script> blocks (including content).
+        text = text.replacingOccurrences(
+            of: "<script[^>]*>[\\s\\S]*?</script>",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        // Remove entire <style>...</style> blocks.
+        text = text.replacingOccurrences(
+            of: "<style[^>]*>[\\s\\S]*?</style>",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        // Remove <noscript> blocks (usually fallback content, not useful).
+        text = text.replacingOccurrences(
+            of: "<noscript[^>]*>[\\s\\S]*?</noscript>",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        // Remove <nav>, <header>, <footer> blocks — typically boilerplate.
+        for tag in ["nav", "header", "footer"] {
+            text = text.replacingOccurrences(
+                of: "<\(tag)[^>]*>[\\s\\S]*?</\(tag)>",
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+
+        // Remove SVG blocks.
+        text = text.replacingOccurrences(
+            of: "<svg[^>]*>[\\s\\S]*?</svg>",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        // Remove HTML comments.
+        text = text.replacingOccurrences(
+            of: "<!--[\\s\\S]*?-->",
+            with: "",
+            options: .regularExpression
+        )
+
+        // Strip remaining HTML tags.
+        text = text.replacingOccurrences(
+            of: "<[^>]+>",
+            with: "",
+            options: .regularExpression
+        )
+
+        // Decode common HTML entities.
+        let entities: [(String, String)] = [
+            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+            ("&quot;", "\""), ("&#39;", "'"), ("&nbsp;", " "),
+            ("&#x27;", "'"), ("&#x2F;", "/"), ("&apos;", "'"),
+            ("&mdash;", "—"), ("&ndash;", "–"), ("&hellip;", "…"),
+            ("&laquo;", "«"), ("&raquo;", "»"),
+        ]
+        for (entity, replacement) in entities {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+
+        // Decode numeric HTML entities (&#123; and &#x1F; forms).
+        // swiftlint:disable:next force_try
+        let numericEntity = try! NSRegularExpression(pattern: "&#(x?[0-9a-fA-F]+);")
+        text = numericEntity.stringByReplacingMatches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text),
+            withTemplate: ""
+        )
+
+        // Collapse runs of whitespace on each line.
+        text = text.replacingOccurrences(
+            of: "[ \\t]+",
+            with: " ",
+            options: .regularExpression
+        )
+
+        // Collapse 3+ newlines into double newline.
+        text = text.replacingOccurrences(
+            of: "\\n{3,}",
+            with: "\n\n",
+            options: .regularExpression
+        )
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - SSRF Protection

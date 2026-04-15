@@ -104,6 +104,7 @@ enum NotchActivityIndicator {
     private static func showIndicator() {
         guard !isVisible else { return }
         guard let screen = NSScreen.main else { return }
+        NotchOverlayTracker.overlayDidShow()
 
         let displayText: String = {
             let count = processes.count
@@ -121,8 +122,15 @@ enum NotchActivityIndicator {
         let notchSize = screen.notchSize
         let screenFrame = screen.frame
 
-        // Slightly wider than the old version to accommodate count text.
-        let expandedWidth = notchSize.width + 120
+        // When a call is active, span the full width from the left call button
+        // to the right waveform wing so the indicator covers both wings.
+        let callButtonWidth: CGFloat = 120
+        let callTimerWidth: CGFloat = 90
+        let expandedWidth: CGFloat = if NotchCallButton.isInCall {
+            notchSize.width + callButtonWidth + callTimerWidth
+        } else {
+            notchSize.width + 120
+        }
         let expandedHeight = notchSize.height + 36
 
         let windowWidth = expandedWidth + shadowPadding * 2
@@ -226,6 +234,7 @@ enum NotchActivityIndicator {
         guard isVisible else { return }
         logger.info("Hiding activity indicator")
         isVisible = false
+        NotchOverlayTracker.overlayDidHide()
         processes.removeAll()
         lastUpdatedID = nil
 

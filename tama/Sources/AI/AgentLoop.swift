@@ -27,9 +27,10 @@ final class AgentLoop {
 
     init(
         workingDirectory: String? = nil,
+        registry: ToolRegistry? = nil,
         maxTurns: Int = 50
     ) {
-        registry = ToolRegistry.defaultRegistry(
+        self.registry = registry ?? ToolRegistry.defaultRegistry(
             workingDirectory: workingDirectory
         )
         self.maxTurns = maxTurns
@@ -39,6 +40,7 @@ final class AgentLoop {
     func run(
         messages: [[String: Any]],
         systemPrompt: String? = nil,
+        maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (AgentEvent) -> Void
     ) async throws -> [[String: Any]] {
         var conversation = messages
@@ -55,6 +57,7 @@ final class AgentLoop {
                     messages: conversation,
                     tools: tools,
                     systemPrompt: systemPrompt,
+                    maxTokens: maxTokens,
                     onEvent: { event in
                         if case let .textDelta(text) = event {
                             // Stream text deltas immediately for smooth UI typing animation.
@@ -109,6 +112,12 @@ final class AgentLoop {
             if toolCalls.contains(where: { $0.name == "dismiss" }) {
                 logger.info("Dismiss tool detected — ending agent loop")
                 throw AgentDismissError()
+            }
+
+            // If end_call tool is in the calls, throw to end the voice call
+            if toolCalls.contains(where: { $0.name == "end_call" }) {
+                logger.info("End call tool detected — ending agent loop")
+                throw AgentEndCallError()
             }
 
             // Execute each tool and collect results

@@ -19,8 +19,12 @@ enum NotchCallButton {
     private static var shapeLayer: CAShapeLayer?
     private static var hoverLayer: CALayer?
     private static var isVisible = false
-    private static var isInCall = false
+    private(set) static var isInCall = false
     private static var labelField: NSTextField?
+    private static var callSession: CallSession?
+
+    /// Whether the panel is temporarily hidden because a notch overlay is active.
+    private static var isHiddenByOverlay = false
 
     // MARK: - Constants
 
@@ -149,6 +153,27 @@ enum NotchCallButton {
                 reposition()
             }
         }
+
+        // Hide when notch overlays appear, restore when they clear.
+        NotificationCenter.default.addObserver(
+            forName: .notchOverlayActive,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in hideForOverlay() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .notchOverlayInactive,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in showAfterOverlay() }
+        }
+
+        // If an overlay is already active, hide immediately.
+        if NotchOverlayTracker.isActive {
+            hideForOverlay()
+        }
     }
 
     /// Hide and tear down the call button with a collapse animation.
@@ -162,6 +187,9 @@ enum NotchCallButton {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        NotificationCenter.default.removeObserver(self, name: .notchOverlayActive, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .notchOverlayInactive, object: nil)
+        isHiddenByOverlay = false
 
         if isInCall {
             isInCall = false
@@ -211,6 +239,34 @@ enum NotchCallButton {
         }
     }
 
+    /// Temporarily hide the call button panel while a notch overlay is active.
+    private static func hideForOverlay() {
+        guard isVisible, !isHiddenByOverlay else { return }
+        isHiddenByOverlay = true
+        panel?.alphaValue = 0
+        panel?.orderOut(nil)
+        if isInCall { NotchCallTimer.hideForOverlay() }
+    }
+
+    /// Restore the call button panel after notch overlays clear, with expand animation.
+    private static func showAfterOverlay() {
+        guard isVisible, isHiddenByOverlay else { return }
+        isHiddenByOverlay = false
+
+        guard let panel, let shapeLayer else { return }
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+
+        // Re-run the expand animation so it slides in cleanly.
+        let wingHeight = panel.frame.height
+        if let label = labelField {
+            label.alphaValue = 0
+            animateExpand(shapeLayer: shapeLayer, hoverLayer: hoverLayer!, label: label, wingHeight: wingHeight)
+        }
+
+        if isInCall { NotchCallTimer.showAfterOverlay() }
+    }
+
     private static func teardown() {
         panel?.orderOut(nil)
         panel = nil
@@ -229,20 +285,34 @@ enum NotchCallButton {
         }
     }
 
-    /// Begin a call — switch label to "Disconnect" and show the timer wing.
+    /// Begin a call — switch label to "Disconnect", show the timer wing, and start the voice session.
     private static func startCall() {
         logger.info("Call started")
         isInCall = true
         updateLabel(disconnect: true)
         NotchCallTimer.show()
+
+        let session = CallSession()
+        callSession = session
+        session.start()
     }
 
-    /// End a call — revert label to "Call Tama" and hide the timer wing.
-    private static func endCall() {
+    /// End a call — revert label to "Call Tama", hide the timer wing, and stop the voice session.
+    static func endCall() {
         logger.info("Call ended")
         isInCall = false
+        isHiddenByOverlay = false
         updateLabel(disconnect: false)
         NotchCallTimer.hide()
+
+        // Show the button panel if it was hidden by an overlay (e.g. tool indicator).
+        if let panel, panel.parent == nil, isVisible {
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+        }
+
+        callSession?.end()
+        callSession = nil
     }
 
     /// Update the label text and icon tint based on call state.

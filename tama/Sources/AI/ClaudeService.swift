@@ -43,6 +43,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String? = nil,
+        maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         let model = currentModel
@@ -60,6 +61,7 @@ final class ClaudeService {
                     messages: messages,
                     tools: tools,
                     systemPrompt: systemPrompt,
+                    maxTokens: maxTokens,
                     onEvent: onEvent
                 )
             } catch let error as ClaudeServiceError {
@@ -98,6 +100,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         if model.provider.usesCodexAPI {
@@ -116,6 +119,7 @@ final class ClaudeService {
                 messages: messages,
                 tools: tools,
                 systemPrompt: systemPrompt,
+                maxTokens: maxTokens,
                 onEvent: onEvent
             )
         }
@@ -125,6 +129,7 @@ final class ClaudeService {
             messages: messages,
             tools: tools,
             systemPrompt: systemPrompt,
+            maxTokens: maxTokens,
             onEvent: onEvent
         )
     }
@@ -220,6 +225,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
@@ -228,7 +234,8 @@ final class ClaudeService {
             model: model,
             messages: messages,
             tools: tools,
-            systemPrompt: systemPrompt
+            systemPrompt: systemPrompt,
+            maxTokens: maxTokens
         )
 
         let (bytes, response) = try await streamingSession.bytes(for: request)
@@ -259,7 +266,8 @@ final class ClaudeService {
         model: ModelInfo,
         messages: [[String: Any]],
         tools: [[String: Any]]?,
-        systemPrompt: String?
+        systemPrompt: String?,
+        maxTokens: Int? = nil
     ) throws -> URLRequest {
         let url = URL(string: model.provider.baseURL)!
         var request = URLRequest(url: url)
@@ -279,7 +287,7 @@ final class ClaudeService {
 
         var body: [String: Any] = [
             "model": model.id,
-            "max_tokens": model.maxOutputTokens,
+            "max_tokens": maxTokens ?? model.maxOutputTokens,
             "stream": true,
             "system": [["type": "text", "text": fullSystemPrompt]],
             "messages": messages,
@@ -305,6 +313,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
@@ -313,7 +322,8 @@ final class ClaudeService {
             model: model,
             messages: messages,
             tools: tools,
-            systemPrompt: systemPrompt
+            systemPrompt: systemPrompt,
+            maxTokens: maxTokens
         )
 
         let (bytes, response) = try await streamingSession.bytes(for: request)
@@ -344,7 +354,8 @@ final class ClaudeService {
         model: ModelInfo,
         messages: [[String: Any]],
         tools: [[String: Any]]?,
-        systemPrompt: String?
+        systemPrompt: String?,
+        maxTokens: Int? = nil
     ) throws -> URLRequest {
         var baseURL = model.provider.baseURL
         // Xiaomi Token Plan needs /chat/completions appended
@@ -377,7 +388,7 @@ final class ClaudeService {
 
         var body: [String: Any] = [
             "model": model.id,
-            "max_tokens": model.maxOutputTokens,
+            "max_tokens": maxTokens ?? model.maxOutputTokens,
             "stream": true,
             "messages": openAIMessages,
         ]

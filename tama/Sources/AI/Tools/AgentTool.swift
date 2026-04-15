@@ -75,6 +75,30 @@ final class ToolRegistry: Sendable {
         ])
     }
 
+    /// Creates a registry for voice calls — same as default but swaps `dismiss` for `end_call`.
+    static func callRegistry(workingDirectory: String? = nil) -> ToolRegistry {
+        let cwd = workingDirectory ?? FileManager.default.currentDirectoryPath
+        return ToolRegistry(tools: [
+            BashTool(workingDirectory: cwd),
+            ReadTool(workingDirectory: cwd),
+            WriteTool(workingDirectory: cwd),
+            EditTool(workingDirectory: cwd),
+            LsTool(workingDirectory: cwd),
+            FindTool(workingDirectory: cwd),
+            GrepTool(workingDirectory: cwd),
+            WebFetchTool(),
+            WebSearchTool(),
+            CreateReminderTool(),
+            CreateRoutineTool(),
+            ListSchedulesTool(),
+            DeleteScheduleTool(),
+            TaskTool(),
+            EndCallTool(),
+            BrowserTool(),
+            SkillTool(),
+        ])
+    }
+
     /// Look up a tool by name.
     func tool(named name: String) -> AgentTool? {
         tools.first { $0.name == name }

@@ -6,27 +6,34 @@ private let logger = Logger(
     category: "calltimer"
 )
 
-/// A live call-duration timer displayed as a right-side wing extending from the hardware notch.
+/// The current mode of the call wing — controls waveform bar color.
+enum CallWingMode {
+    case listening
+    case responding
+}
+
+/// A right-side wing extending from the hardware notch that shows a live audio waveform.
 ///
-/// Mirrors `NotchCallButton` (left wing) but on the right side. Shows an MM:SS timer
-/// that counts up from when the call started. Created/destroyed by `NotchCallButton`
-/// when the user starts/ends a call.
+/// Mirrors `NotchCallButton` (left wing) but on the right side. Displays animated
+/// waveform bars that react to audio level — green when listening, grey when responding.
+/// Created/destroyed by `NotchCallButton` when the user starts/ends a call.
 @MainActor
 enum NotchCallTimer {
     // MARK: - State
 
     private static var panel: NSPanel?
     private static var isVisible = false
-    private static var labelField: NSTextField?
-    private static var timer: Timer?
-    private static var callStartDate: Date?
-
     private static var shapeLayer: CAShapeLayer?
+    private static var barLayers: [CALayer] = []
+    private static var displayLink: CVDisplayLink?
+    private static var currentMode: CallWingMode = .listening
+    private static var audioLevel: Double = 0
+    private static var barHeights: [CGFloat] = []
 
     // MARK: - Constants
 
     /// Width of the wing extension.
-    private static let wingWidth: CGFloat = 120
+    private static let wingWidth: CGFloat = 90
 
     /// Top corner radius on the right side (matches notch curvature).
     private static let topCornerRadius: CGFloat = 6
@@ -34,19 +41,25 @@ enum NotchCallTimer {
     /// Bottom corner radius (matching notch aesthetic).
     private static let bottomCornerRadius: CGFloat = 10
 
-    private static let expandDuration: TimeInterval = 0.4
     private static let collapseDuration: TimeInterval = 0.25
+
+    private static let barCount = 5
+    private static let barWidth: CGFloat = 3
+    private static let barSpacing: CGFloat = 3.5
+    private static let barCornerRadius: CGFloat = 1.5
+    private static let barMinHeight: CGFloat = 3
 
     // MARK: - Public API
 
-    /// Show the timer wing joined to the right side of the notch and start counting.
+    /// Show the waveform wing joined to the right side of the notch.
     static func show() {
         guard !isVisible else { return }
         guard let screen = NSScreen.main else { return }
 
-        logger.info("Showing call timer")
+        logger.info("Showing call waveform wing")
         isVisible = true
-        callStartDate = Date()
+        audioLevel = 0
+        barHeights = Array(repeating: barMinHeight, count: barCount)
 
         let notchSize = screen.notchSize
         let screenFrame = screen.frame
@@ -95,30 +108,30 @@ enum NotchCallTimer {
         // 1px bridge at the left edge to eliminate subpixel gap with hardware notch.
         let bridgeLayer = CALayer()
         bridgeLayer.backgroundColor = NSColor.black.cgColor
-        bridgeLayer.frame = CGRect(
-            x: -1,
-            y: 0,
-            width: 2,
-            height: wingHeight
-        )
+        bridgeLayer.frame = CGRect(x: -1, y: 0, width: 2, height: wingHeight)
         rootView.layer?.addSublayer(bridgeLayer)
 
-        // Text label centered in the wing area.
-        let labelHeight: CGFloat = 16
-        let labelY = (wingHeight - labelHeight) / 2
-        let label = makeTimerLabel(text: "00:00")
-        let labelInset = topCornerRadius + 30
-        label.frame = NSRect(
-            x: labelInset,
-            y: labelY,
-            width: wingWidth - labelInset - 4,
-            height: labelHeight
-        )
-        rootView.addSubview(label)
-        labelField = label
+        // Waveform bars — centered in the wing body.
+        let totalBarsWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
+        let barsStartX = topCornerRadius + (wingWidth - topCornerRadius * 2 - totalBarsWidth) / 2 + 6
+        var bars: [CALayer] = []
 
-        // Start with label invisible for fade-in.
-        label.alphaValue = 0
+        for i in 0 ..< barCount {
+            let bar = CALayer()
+            bar.backgroundColor = barColor(for: currentMode).cgColor
+            bar.cornerRadius = barCornerRadius
+            let x = barsStartX + CGFloat(i) * (barWidth + barSpacing)
+            bar.frame = CGRect(
+                x: x,
+                y: (wingHeight - barMinHeight) / 2,
+                width: barWidth,
+                height: barMinHeight
+            )
+            bar.opacity = 0 // Start invisible for fade-in
+            rootView.layer?.addSublayer(bar)
+            bars.append(bar)
+        }
+        barLayers = bars
 
         newPanel.contentView = rootView
         newPanel.orderFrontRegardless()
@@ -127,35 +140,37 @@ enum NotchCallTimer {
         shapeLayer = shape
 
         // Animate wing expanding from notch edge.
-        animateExpand(shapeLayer: shape, label: label, wingHeight: wingHeight)
+        animateExpand(shapeLayer: shape, wingHeight: wingHeight)
 
-        // Start 1-second repeating timer.
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            Task { @MainActor in
-                updateTimerLabel()
+        // Fade in bars after expand.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.2)
+            for bar in bars {
+                bar.opacity = 1
             }
+            CATransaction.commit()
         }
+
+        // Start display link for smooth bar animation.
+        startDisplayLink()
 
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
         ) { _ in
-            Task { @MainActor in
-                reposition()
-            }
+            Task { @MainActor in reposition() }
         }
     }
 
-    /// Hide and tear down the timer wing with a collapse animation.
+    /// Hide and tear down the waveform wing with a collapse animation.
     static func hide() {
         guard isVisible else { return }
-        logger.info("Hiding call timer")
+        logger.info("Hiding call waveform wing")
         isVisible = false
 
-        timer?.invalidate()
-        timer = nil
-        callStartDate = nil
+        stopDisplayLink()
 
         NotificationCenter.default.removeObserver(
             self,
@@ -168,13 +183,13 @@ enum NotchCallTimer {
             return
         }
 
-        // Fade out label immediately.
-        if let labelField {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.1
-                labelField.animator().alphaValue = 0
-            }
+        // Fade out bars immediately.
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.1)
+        for bar in barLayers {
+            bar.opacity = 0
         }
+        CATransaction.commit()
 
         // Collapse shape back to notch edge.
         let wingHeight = panel.frame.height
@@ -199,37 +214,125 @@ enum NotchCallTimer {
                 context.duration = 0.15
                 panel.animator().alphaValue = 0
             } completionHandler: {
-                MainActor.assumeIsolated {
-                    teardown()
-                }
+                MainActor.assumeIsolated { teardown() }
             }
         }
     }
 
+    /// Update the audio level (0.0–1.0) for waveform animation.
+    static func setAudioLevel(_ level: Double) {
+        audioLevel = level
+    }
+
+    /// Switch between listening (green) and responding (grey) mode.
+    static func setMode(_ mode: CallWingMode) {
+        currentMode = mode
+        let color = barColor(for: mode).cgColor
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.2)
+        for bar in barLayers {
+            bar.backgroundColor = color
+        }
+        CATransaction.commit()
+    }
+
+    /// Temporarily hide the waveform panel while a notch overlay is active.
+    static func hideForOverlay() {
+        guard isVisible else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for bar in barLayers {
+            bar.opacity = 0
+        }
+        CATransaction.commit()
+        panel?.alphaValue = 0
+        panel?.orderOut(nil)
+    }
+
+    /// Restore the waveform panel after notch overlays clear, with expand animation.
+    static func showAfterOverlay() {
+        guard isVisible, let panel, let shapeLayer else { return }
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+
+        // Re-run expand animation.
+        let wingHeight = panel.frame.height
+        animateExpand(shapeLayer: shapeLayer, wingHeight: wingHeight)
+
+        // Fade bars back in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.2)
+            for bar in barLayers {
+                bar.opacity = 1
+            }
+            CATransaction.commit()
+        }
+    }
+
+    // MARK: - Private
+
     private static func teardown() {
+        stopDisplayLink()
         panel?.orderOut(nil)
         panel = nil
         shapeLayer = nil
-        labelField = nil
+        barLayers = []
+        barHeights = []
     }
 
-    // MARK: - Timer
+    private static func barColor(for mode: CallWingMode) -> NSColor {
+        switch mode {
+        case .listening:
+            NSColor.systemGreen
+        case .responding:
+            NSColor.white.withAlphaComponent(0.45)
+        }
+    }
 
-    private static func updateTimerLabel() {
-        guard let callStartDate, let labelField else { return }
-        let elapsed = Int(Date().timeIntervalSince(callStartDate))
-        let minutes = elapsed / 60
-        let seconds = elapsed % 60
-        let text = String(format: "%02d:%02d", minutes, seconds)
+    // MARK: - Display Link
 
-        let attributed = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.85),
-            ]
-        )
-        labelField.attributedStringValue = attributed
+    private static func startDisplayLink() {
+        stopDisplayLink()
+        var link: CVDisplayLink?
+        CVDisplayLinkCreateWithActiveCGDisplays(&link)
+        guard let link else { return }
+        displayLink = link
+        CVDisplayLinkSetOutputHandler(link) { _, _, _, _, _ in
+            DispatchQueue.main.async { updateBars() }
+            return kCVReturnSuccess
+        }
+        CVDisplayLinkStart(link)
+    }
+
+    private static func stopDisplayLink() {
+        if let link = displayLink, CVDisplayLinkIsRunning(link) {
+            CVDisplayLinkStop(link)
+        }
+        displayLink = nil
+    }
+
+    private static func updateBars() {
+        guard isVisible, let panel else { return }
+        let wingHeight = panel.frame.height
+        let maxBarHeight = wingHeight - 8
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        for i in 0 ..< barCount {
+            let randomFactor = CGFloat.random(in: 0.3 ... 1.0)
+            let targetHeight = max(barMinHeight, CGFloat(audioLevel) * maxBarHeight * randomFactor)
+            barHeights[i] += (targetHeight - barHeights[i]) * 0.25
+
+            let h = min(barHeights[i], maxBarHeight)
+            var frame = barLayers[i].frame
+            frame.size.height = h
+            frame.origin.y = (wingHeight - h) / 2
+            barLayers[i].frame = frame
+        }
+
+        CATransaction.commit()
     }
 
     // MARK: - Animation
@@ -251,16 +354,13 @@ enum NotchCallTimer {
 
     private static func animateExpand(
         shapeLayer: CAShapeLayer,
-        label: NSTextField,
         wingHeight: CGFloat
     ) {
         let collapsedPath = collapsedWingPath(wingHeight: wingHeight)
         let expandedPath = rightWingPath(in: CGRect(x: 0, y: 0, width: wingWidth, height: wingHeight))
 
-        // Start from collapsed.
         shapeLayer.path = collapsedPath
 
-        // Spring animate to full wing.
         let pathAnimation = CASpringAnimation(keyPath: "path")
         pathAnimation.fromValue = collapsedPath
         pathAnimation.toValue = expandedPath
@@ -273,15 +373,6 @@ enum NotchCallTimer {
         pathAnimation.fillMode = .forwards
         shapeLayer.add(pathAnimation, forKey: "expandPath")
         shapeLayer.path = expandedPath
-
-        // Fade in label after a short delay.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                label.animator().alphaValue = 1.0
-            }
-        }
     }
 
     // MARK: - Positioning
@@ -295,81 +386,42 @@ enum NotchCallTimer {
         let notchRightX = screenFrame.midX + notchSize.width / 2
         let originX = notchRightX - topCornerRadius - 8
         let originY = screenFrame.maxY - windowHeight
-        panel.setFrame(NSRect(x: originX, y: originY, width: windowWidth, height: windowHeight), display: true)
+        panel.setFrame(
+            NSRect(x: originX, y: originY, width: windowWidth, height: windowHeight),
+            display: true
+        )
     }
 
     // MARK: - Wing Path
 
-    /// Generates a path for the right wing shape — a horizontal mirror of `NotchCallButton.leftWingPath`.
-    ///
-    /// ```
-    /// ┌──────────────  ← flat top at full width (flush with notch)
-    /// ╲            ╱   ← top-left & top-right: inward quad curves (wing flare)
-    ///  │          │    ← body: sides inset by topCornerRadius
-    ///  ╱────────╯      ← bottom-right: outward curve, bottom-left: inward quad curve (wing flare)
-    /// ┘                ← bottom at full width (flush with notch)
-    /// ```
     private static func rightWingPath(in rect: CGRect) -> CGPath {
         let path = CGMutablePath()
         let tr = topCornerRadius
         let br = bottomCornerRadius
 
-        // Start at top-right corner (flat top edge).
         path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-
-        // Top edge → left at full width (flush with notch).
         path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-
-        // Top-left: inward quad curve — flares from full width down to body.
         path.addQuadCurve(
             to: CGPoint(x: rect.minX + tr, y: rect.minY + tr),
             control: CGPoint(x: rect.minX + tr, y: rect.minY)
         )
-
-        // Left side straight down (body is inset by tr from the notch edge).
         path.addLine(to: CGPoint(x: rect.minX + tr, y: rect.maxY - tr))
-
-        // Bottom-left: inward quad curve — body flares back out to full width.
         path.addQuadCurve(
             to: CGPoint(x: rect.minX, y: rect.maxY),
             control: CGPoint(x: rect.minX + tr, y: rect.maxY)
         )
-
-        // Bottom edge → right.
         path.addLine(to: CGPoint(x: rect.maxX - tr - br, y: rect.maxY))
-
-        // Bottom-right corner: outward curve.
         path.addQuadCurve(
             to: CGPoint(x: rect.maxX - tr, y: rect.maxY - br),
             control: CGPoint(x: rect.maxX - tr, y: rect.maxY)
         )
-
-        // Right side straight up to the top-right corner area.
         path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY + tr))
-
-        // Top-right corner: inward quad curve (matches notch curvature).
         path.addQuadCurve(
             to: CGPoint(x: rect.maxX, y: rect.minY),
             control: CGPoint(x: rect.maxX - tr, y: rect.minY)
         )
-
         path.closeSubpath()
         return path
-    }
-
-    // MARK: - Label
-
-    private static func makeTimerLabel(text: String) -> NSTextField {
-        let attributed = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.85),
-            ]
-        )
-        let label = NSTextField(labelWithAttributedString: attributed)
-        label.alignment = .center
-        return label
     }
 }
 

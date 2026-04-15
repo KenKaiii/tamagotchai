@@ -19,19 +19,7 @@ struct VoiceSettingsView: View {
 
             Divider().opacity(0.3).padding(.horizontal, 14)
 
-            modelSection
-                .opacity(manager.voiceEnabled ? 1 : 0.4)
-                .allowsHitTesting(manager.voiceEnabled)
-
-            Divider().opacity(0.3).padding(.horizontal, 14)
-
-            voiceListSection
-                .opacity(manager.voiceEnabled ? 1 : 0.4)
-                .allowsHitTesting(manager.voiceEnabled)
-
-            Divider().opacity(0.3).padding(.horizontal, 14)
-
-            speedSection
+            kokoroSettingsSection
                 .opacity(manager.voiceEnabled ? 1 : 0.4)
                 .allowsHitTesting(manager.voiceEnabled)
 
@@ -68,6 +56,22 @@ struct VoiceSettingsView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Kokoro Settings
+
+    private var kokoroSettingsSection: some View {
+        VStack(spacing: 0) {
+            modelSection
+
+            Divider().opacity(0.3).padding(.horizontal, 14)
+
+            voiceListSection
+
+            Divider().opacity(0.3).padding(.horizontal, 14)
+
+            speedSection
+        }
     }
 
     // MARK: - Model Section
@@ -144,7 +148,6 @@ struct VoiceSettingsView: View {
         let isPreviewing = previewingVoice == voice.id
 
         return HStack(spacing: 8) {
-            // Play/preview button
             playButton(for: voice, isDownloaded: isDownloaded, isPreviewing: isPreviewing)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -209,7 +212,6 @@ struct VoiceSettingsView: View {
     @ViewBuilder
     private func playButton(for voice: VoiceInfo, isDownloaded: Bool, isPreviewing: Bool) -> some View {
         if isPreviewing {
-            // Animated bars while previewing
             HStack(spacing: 1.5) {
                 ForEach(0 ..< 3, id: \.self) { i in
                     SoundBar(index: i)
@@ -311,7 +313,7 @@ struct VoiceSettingsView: View {
     private var footerSection: some View {
         HStack(spacing: 8) {
             if !manager.downloadedVoices.isEmpty, manager.modelDownloaded {
-                Text("Active: \(voiceName(manager.selectedVoice))")
+                Text("Active: \(kokoroVoiceName(manager.selectedVoice))")
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.5))
             }
@@ -336,7 +338,7 @@ struct VoiceSettingsView: View {
         }
     }
 
-    private func voiceName(_ id: String) -> String {
+    private func kokoroVoiceName(_ id: String) -> String {
         KokoroManager.availableVoices.first(where: { $0.id == id })?.name ?? id
     }
 

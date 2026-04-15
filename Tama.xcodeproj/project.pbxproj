@@ -49,6 +49,7 @@
 		45FDFCA1692CC99061DE32E5 /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E95728479043325C75C7159 /* VoiceService.swift */; };
 		4627DAC5A225953F24357B18 /* MLXUtilsLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 18B18D766A71CB221B42452C /* MLXUtilsLibrary */; };
 		49A81D10828845674603448F /* SkillListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB0D7E42D2F3EBBCC2B9589 /* SkillListView.swift */; };
+		4B85C05867CB249D519B1BD3 /* TTSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD6ED2C2681382313223AEA4 /* TTSProvider.swift */; };
 		504092E774E94DCD60B9F1CF /* ToolListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60C34E3BF770A0097677E9E /* ToolListView.swift */; };
 		52CF359BAE0B1EFC36F51EAD /* DismissTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E987C138A2890E13F94BDE2 /* DismissTool.swift */; };
 		54E795594E31777DBCBFAD0D /* SystemAudioMuter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0EB70CA69385231558C97C /* SystemAudioMuter.swift */; };
@@ -275,6 +276,7 @@
 		CB3B5FC1180AF9EA2A7DB7D6 /* CodexStreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexStreamParser.swift; sourceTree = "<group>"; };
 		CCD675CC1366F086E4A5EF75 /* ScheduleParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleParser.swift; sourceTree = "<group>"; };
 		CD293E8D0C98E78D0956380C /* SkillTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillTool.swift; sourceTree = "<group>"; };
+		CD6ED2C2681382313223AEA4 /* TTSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSProvider.swift; sourceTree = "<group>"; };
 		CF633306AA7267F7ACA50D27 /* ChromiumManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromiumManager.swift; sourceTree = "<group>"; };
 		CF8A11B848939237B5F7075F /* FloatingPanel+Response.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FloatingPanel+Response.swift"; sourceTree = "<group>"; };
 		CF8DC19E2E173C1395EE0E7A /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
@@ -633,6 +635,7 @@
 				0521698D93C42116ED27F049 /* KokoroManager.swift */,
 				524A57012550F1FB19D9E604 /* SpeechService.swift */,
 				7F0EB70CA69385231558C97C /* SystemAudioMuter.swift */,
+				CD6ED2C2681382313223AEA4 /* TTSProvider.swift */,
 				4E95728479043325C75C7159 /* VoiceService.swift */,
 				9B2821E890A4951FA6DFEE5B /* VoiceSettingsController.swift */,
 				8389BAE4360565E6017ED575 /* VoiceSettingsView.swift */,
@@ -943,6 +946,7 @@
 				CD783C6A6B12FE2E59F85805 /* StreamParser.swift in Sources */,
 				54E795594E31777DBCBFAD0D /* SystemAudioMuter.swift in Sources */,
 				C4297BF9ECAF486C849B8B3A /* SystemPrompt.swift in Sources */,
+				4B85C05867CB249D519B1BD3 /* TTSProvider.swift in Sources */,
 				7CA285BA3505472BE983560F /* TamaApp.swift in Sources */,
 				88CE8835AAD9350269F21A43 /* TaskDetailView.swift in Sources */,
 				99E89CC18A4D56BBB0BED927 /* TaskItem.swift in Sources */,

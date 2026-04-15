@@ -721,6 +721,8 @@ struct OnboardingView: View {
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.35))
                 .padding(.top, 8)
+
+            Divider().opacity(0.3).padding(.horizontal, 10).padding(.top, 12)
         }
         .padding(.horizontal, 14)
     }

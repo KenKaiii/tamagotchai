@@ -42,8 +42,14 @@ final class SpeechService {
     /// Whether the player is currently playing a buffer.
     private var isPlaying = false
 
-    /// Active generation task (so we can cancel on stop).
-    private var generationTask: Task<Void, Never>?
+    /// Active generation tasks (so we can cancel on stop).
+    private var generationTasks: [Task<Void, Never>] = []
+
+    /// Ordered slots for audio buffers — ensures playback order matches enqueue order
+    /// even when concurrent TTS requests complete out of order.
+    private var orderedSlots: [Int: AVAudioPCMBuffer] = [:]
+    private var nextSlotIndex = 0
+    private var nextPlaySlot = 0
 
     /// Timer that auto-flushes buffered text when no new chunks arrive for `flushDelay`.
     /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses
@@ -74,7 +80,6 @@ final class SpeechService {
 
     /// Minimum character count before the first eager flush.
     /// Lower = faster time-to-first-audio, higher = more natural speech.
-    /// 30 chars (~5-6 words) is enough for Fish Audio to produce natural speech.
     private static let eagerFlushChars = 30
 
     /// How long to wait after the last chunk before auto-flushing the buffer.
@@ -102,6 +107,10 @@ final class SpeechService {
         hasFlushedFirst = false
         flushTimer?.invalidate()
         flushTimer = nil
+        nextSlotIndex = 0
+        nextPlaySlot = 0
+        orderedSlots.removeAll()
+        prewarmEngine()
         logger.info("Streaming speech session started")
     }
 
@@ -205,6 +214,7 @@ final class SpeechService {
             return
         }
 
+        logger.info("flushBuffer — text: \(text.prefix(80), privacy: .public)")
         streamBuffer = ""
 
         if !text.isEmpty {
@@ -254,8 +264,11 @@ final class SpeechService {
         flushTimer?.invalidate()
         flushTimer = nil
 
-        generationTask?.cancel()
-        generationTask = nil
+        for task in generationTasks {
+            task.cancel()
+        }
+        generationTasks.removeAll()
+        orderedSlots.removeAll()
 
         stopPlayback()
 
@@ -266,18 +279,42 @@ final class SpeechService {
         }
     }
 
+    /// Stops playback and the audio engine. Called when the panel is dismissed
+    /// to fully release audio resources and prevent zombie engine instances.
+    func shutdown() {
+        stop()
+        stopEngine()
+    }
+
     private func stopPlayback() {
         bufferQueue.removeAll()
         isPlaying = false
         playerNode.stop()
     }
 
+    /// Stops the audio engine to fully release audio resources.
+    /// The engine is restarted automatically by `ensureEngineRunning` when needed.
+    private func stopEngine() {
+        guard engineStarted else { return }
+        audioEngine.stop()
+        audioEngine.reset()
+        engineStarted = false
+        logger.debug("Audio engine stopped and reset")
+    }
+
     // MARK: - Audio Engine Management
 
-    private func ensureEngineRunning(format: AVAudioFormat) {
-        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
+    /// Pre-warms the audio engine so the first buffer doesn't get clipped.
+    /// Called at the start of a streaming session before any audio is ready.
+    private func prewarmEngine() {
+        // Use a standard format to get the engine running early
+        let format = AVAudioFormat(standardFormatWithSampleRate: 24000, channels: 1)!
+        ensureEngineRunning(format: format)
+    }
 
-        if !audioEngine.isRunning {
+    private func ensureEngineRunning(format: AVAudioFormat) {
+        if !engineStarted {
+            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
             do {
                 try audioEngine.start()
                 engineStarted = true
@@ -314,6 +351,10 @@ final class SpeechService {
         let remainder = String(cleaned[splitIndex...])
 
         streamBuffer = remainder
+        logger
+            .info(
+                "drainSentences — spoke: \(toSpeak.prefix(80), privacy: .public), remainder: \(remainder.prefix(40), privacy: .public)"
+            )
 
         if !toSpeak.isEmpty {
             enqueueSentences(from: toSpeak)
@@ -324,13 +365,15 @@ final class SpeechService {
 
     /// Splits text into speakable chunks, merges short fragments, and enqueues each.
     private func enqueueSentences(from text: String) {
+        logger.info("enqueueSentences input: \(text.prefix(120), privacy: .public)")
         let sentences = splitIntoSentences(text)
         let chunks = splitLongSentences(sentences)
         let merged = mergeShortFragments(chunks)
 
-        for chunk in merged {
+        for (i, chunk) in merged.enumerated() {
             let trimmed = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
+            logger.info("  chunk[\(i)]: \(trimmed.prefix(100), privacy: .public)")
             enqueueUtterance(trimmed)
         }
     }
@@ -432,7 +475,7 @@ final class SpeechService {
         return result
     }
 
-    /// Enqueues text for TTS generation on a background thread, then queues playback.
+    /// Enqueues text for TTS generation via Kokoro.
     private func enqueueUtterance(_ text: String) {
         pendingUtterances += 1
         logger.info("Enqueuing: \(text.prefix(60))…")
@@ -444,14 +487,16 @@ final class SpeechService {
             return
         }
 
-        // Capture engine state on MainActor, then generate off main thread
         guard let snapshot = manager.captureGenerationContext() else {
             logger.warning("No voice/engine available, skipping: \(text.prefix(40))…")
             utteranceDidFinish()
             return
         }
 
-        generationTask = Task {
+        let slot = nextSlotIndex
+        nextSlotIndex += 1
+
+        let task = Task {
             let result: AVAudioPCMBuffer? = await withCheckedContinuation { continuation in
                 self.generationQueue.async {
                     let buffer = KokoroManager.generateAudioBufferOffMain(text: text, context: snapshot)
@@ -462,12 +507,41 @@ final class SpeechService {
             guard !Task.isCancelled else { return }
 
             if let result {
-                self.bufferQueue.append(result)
-                self.playNextBuffer()
+                self.slotReady(slot: slot, buffer: result)
             } else {
                 logger.warning("Kokoro generation failed, skipping: \(text.prefix(40))…")
-                utteranceDidFinish()
+                self.slotFailed(slot: slot)
             }
+        }
+        generationTasks.append(task)
+    }
+
+    // MARK: - Ordered Slot Management
+
+    /// Called when a TTS generation completes — stores the buffer in its ordered slot
+    /// and drains any consecutive ready slots into the playback queue.
+    private func slotReady(slot: Int, buffer: AVAudioPCMBuffer) {
+        orderedSlots[slot] = buffer
+        drainReadySlots()
+    }
+
+    /// Called when a TTS generation fails — skips this slot and drains.
+    private func slotFailed(slot: Int) {
+        utteranceDidFinish()
+        // Mark slot as processed by advancing past it if it's next in line
+        if slot == nextPlaySlot {
+            nextPlaySlot += 1
+            drainReadySlots()
+        }
+    }
+
+    /// Drains consecutive ready slots into the playback buffer queue in order.
+    private func drainReadySlots() {
+        while let buffer = orderedSlots[nextPlaySlot] {
+            orderedSlots.removeValue(forKey: nextPlaySlot)
+            nextPlaySlot += 1
+            bufferQueue.append(buffer)
+            playNextBuffer()
         }
     }
 

@@ -116,6 +116,7 @@ final class PromptPanelController {
 
         isDismissedByAgent = false
         isPanelDismissed = false
+        isVoiceMode = false
         currentSession = nil
         currentTab = .chats
         ensurePanel()
@@ -274,29 +275,39 @@ final class PromptPanelController {
             guard let self else { return }
             isPanelDismissed = true
 
-            // Show activity indicator if agent is still working in the background.
-            if activeAgentTask != nil {
-                NotchActivityIndicator.addProcess(id: "chat-agent", label: "Thinking…")
-            }
+            // In voice mode, keep TTS streaming alive so the agent's response
+            // plays as audio even after dismiss. The stream task is kept running
+            // to await finishStreaming() and restart voice capture when done.
+            if isVoiceMode, activeAgentTask != nil {
+                logger.info("Voice mode dismiss — keeping TTS alive for background response")
+                VoiceService.shared.stopFollowUpCapture()
+                panel?.hideToolIndicator()
+                panel?.hideThinkingIndicator()
+                // Don't stop SpeechService, don't cancel stream task,
+                // don't reset isVoiceMode — let voice continue in background
+            } else {
+                // Show activity indicator if agent is still working in the background.
+                if activeAgentTask != nil {
+                    NotchActivityIndicator.addProcess(id: "chat-agent", label: "Thinking…")
+                }
 
-            // Cancel UI-only tasks (stream rendering, TTS, voice) but
-            // let the agent task keep running in the background so the
-            // LLM call completes and the user gets a notification.
-            activeStreamTask?.cancel()
-            activeStreamTask = nil
-            SpeechService.shared.stop()
-            VoiceService.shared.stopFollowUpCapture()
-            panel?.hideToolIndicator()
-            panel?.hideThinkingIndicator()
-            isVoiceMode = false
+                // Non-voice dismiss: cancel UI-only tasks but let agent keep running.
+                activeStreamTask?.cancel()
+                activeStreamTask = nil
+                SpeechService.shared.shutdown()
+                VoiceService.shared.stopFollowUpCapture()
+                panel?.hideToolIndicator()
+                panel?.hideThinkingIndicator()
+                isVoiceMode = false
 
-            // Schedule TTS engine unload after delay to free memory
-            ttsUnloadTask?.cancel()
-            ttsUnloadTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { return }
-                KokoroManager.shared.unload()
-                self?.logger.info("TTS engine unloaded after idle timeout")
+                // Schedule TTS engine unload after delay to free memory
+                ttsUnloadTask?.cancel()
+                ttsUnloadTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(10))
+                    guard !Task.isCancelled else { return }
+                    KokoroManager.shared.unload()
+                    self?.logger.info("TTS engine unloaded after idle timeout")
+                }
             }
         }
         panel = newPanel
@@ -605,7 +616,18 @@ final class PromptPanelController {
             logger.debug("Voice capture skipped — voice disabled")
             return
         }
-        guard !isDismissedByAgent, !isPanelDismissed, let panel, panel.isVisible else { return }
+        guard !isDismissedByAgent, !isPanelDismissed, let panel, panel.isVisible else {
+            // swiftformat:disable:next redundantSelf
+            let dismissed = self.isDismissedByAgent
+            // swiftformat:disable:next redundantSelf
+            let panelDismissed = self.isPanelDismissed
+            // swiftformat:disable:next redundantSelf
+            let panelVis = self.panel?.isVisible ?? false
+            logger.debug(
+                "Voice capture skipped — dismissed:\(dismissed) panelDismissed:\(panelDismissed) panelVisible:\(panelVis)"
+            )
+            return
+        }
         SpeechService.shared.stop()
         isVoiceMode = true
         panel.showVoiceFollowUp()
@@ -778,6 +800,20 @@ final class PromptPanelController {
             _ = try await panel.streamResponse(stream, userText: userText)
             if speakInline {
                 await SpeechService.shared.finishStreaming()
+                // If TTS finished while panel was dismissed (background voice),
+                // schedule engine unload since we kept it alive for playback.
+                if isPanelDismissed {
+                    logger.info("Background voice playback finished")
+                    isVoiceMode = false
+                    MenuBarMood.shared.setActivity(nil)
+                    ttsUnloadTask?.cancel()
+                    ttsUnloadTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .seconds(10))
+                        guard !Task.isCancelled else { return }
+                        KokoroManager.shared.unload()
+                        self?.logger.info("TTS engine unloaded after idle timeout")
+                    }
+                }
             }
             startVoiceCapture()
         } catch is CancellationError {
@@ -966,6 +1002,7 @@ final class PromptPanelController {
 
         isDismissedByAgent = false
         isPanelDismissed = false
+        isVoiceMode = false
         currentTab = .chats
         ensurePanel()
         conversationHistory = []
@@ -1007,18 +1044,18 @@ final class PromptPanelController {
         let cwd = Self.ensureWorkspace()
         let skillsSection = SkillStore.shared.formatForPrompt()
         return """
-        you have access to tools for working with the user's computer. \
-        you can run shell commands (bash), read/write/edit files, \
+        You have access to tools for working with the user's computer. \
+        You can run shell commands (bash), read/write/edit files, \
         search code (grep/find), list directories (ls), fetch web \
         pages (web_fetch), and search the web (web_search). \
-        you can also create reminders (create_reminder) and \
+        You can also create reminders (create_reminder) and \
         routines (create_routine) that run on a schedule, list them \
         (list_schedules), and delete them (delete_schedule). \
-        reminders fire macOS notifications; routines run an LLM prompt \
+        Reminders fire macOS notifications; routines run an LLM prompt \
         and notify with the result. \
-        for multi-step tasks, use the "task" tool to create a checklist — \
+        For multi-step tasks, use the "task" tool to create a checklist — \
         tasks are stored and run later when the user opens the Tasks Pane (⌥Space → Tasks tab) \
-        and presses R. working directory: \(cwd)
+        and presses R. Working directory: \(cwd)
         \(skillsSection)
         """
     }
@@ -1027,36 +1064,42 @@ final class PromptPanelController {
         let cwd = Self.ensureWorkspace()
         let skillsSection = SkillStore.shared.formatForPrompt()
         return """
-        you have access to tools for working with the user's computer. \
-        you can run shell commands (bash), read/write/edit files, \
+        You have access to tools for working with the user's computer. \
+        You can run shell commands (bash), read/write/edit files, \
         search code (grep/find), list directories (ls), fetch web \
         pages (web_fetch), search the web (web_search), create \
         reminders (create_reminder — fires a notification), routines \
         (create_routine — runs a prompt and notifies), list/delete \
         schedules, and create task checklists (task — stored for later). \
-        working directory: \(cwd)
+        Working directory: \(cwd)
         \(skillsSection)
 
-        CRITICAL: this is a voice conversation. your response will be spoken aloud. \
-        you MUST be extremely brief:
+        CRITICAL: This is a live voice conversation. You are talking to a real person, out loud, \
+        in real time. Their mic is on, your voice is playing through their speakers. \
+        This is a phone call, not a chat window.
 
-        - answer in ONE sentence when possible. never exceed two sentences unless \
-        the user explicitly asks you to explain in detail.
-        - use proper grammar and punctuation. write naturally as if speaking.
-        - absolutely no markdown, no bullet points, no code blocks, no headers. \
-        plain text only.
-        - for tool results: say what happened in a few words. \
-        "Done." or "I've updated that file." or "There are 12 files." — that's it.
-        - do not repeat the user's question back to them. do not add pleasantries \
-        like "Sure!" or "Of course!" — just answer directly.
-        - if the user asks something complex, give the short answer first, \
-        then ask if they want more detail.
-        - IMPORTANT: when you need to use tools before answering (search, read files, \
-        fetch web pages, run commands, etc.), ALWAYS say a short acknowledgment FIRST \
-        before calling any tools. examples: "Let me look into that." / \
-        "One moment, checking now." / "Let me find that for you." \
-        this ensures the user hears something immediately instead of silence while \
-        tools run. never go straight into tool calls without speaking first.
+        The most important thing: THERE SHOULD NEVER BE SILENCE. \
+        In a real conversation between two people, one person talks, then the other responds \
+        immediately. No dead air. No awkward pauses. That's how you need to operate. \
+        The moment you receive their words, you respond — and if you need to go do something \
+        (search the web, read a file, run a command), you TELL them first, naturally, \
+        the way a person would: "Oh yeah hang on, let me look that up..." or \
+        "Gimme a sec, pulling that up now." Then do your thing. Then come back and tell them what you found. \
+        The user should always hear your voice, never just silence.
+
+        Length: match the question. "What's up" = one sentence. \
+        "Give me all the AI news" = as long as it needs to be. \
+        But never pad or ramble. Every sentence earns its place.
+
+        Be natural. Use contractions, react to what they say, laugh if something's funny, \
+        acknowledge if they're frustrated. You're not an assistant reading a script — \
+        you're a person they know, on a call.
+
+        Hard rules:
+        - No markdown, no bullet points, no code blocks. Plain spoken words only.
+        - For tool results, just say what happened. "Done." or "Yeah that file's updated."
+        - Don't repeat their question back to them.
+
         """
     }
 

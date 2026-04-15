@@ -310,6 +310,9 @@ final class ScheduleStore {
                 resultText = "Routine failed: \(error.localizedDescription)"
             }
 
+            // Clean up any browser processes launched during the routine.
+            BrowserManager.shared.disconnect()
+
             // Mark as inactive
             activeRoutineIDs.remove(job.id)
             NotchActivityIndicator.removeProcess(id: job.id.uuidString)

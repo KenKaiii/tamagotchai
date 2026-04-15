@@ -103,6 +103,7 @@
 		ABC3D49722D310D0E1C9B36D /* DropdownPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 150A00E6A620292F63778521 /* DropdownPanelController.swift */; };
 		AD954E5E2FBF8456DBEBDE45 /* sound-step.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 0C406B0172D5BDE9267A1EB7 /* sound-step.mp3 */; };
 		AF0FECDEC3D05EB7674B8032 /* ClipboardHistoryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6D9D9905A17C23B4330DB9 /* ClipboardHistoryTool.swift */; };
+		B0420A2B4724740C032F9422 /* NotchCallTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C00CB5930B3DA31BE956AE2 /* NotchCallTimer.swift */; };
 		B6FED770FDEFFC1489498292 /* CreateRoutineTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDA24AF8A50BCE6686934553 /* CreateRoutineTool.swift */; };
 		B8B0810C9A791D2D8CF5DC60 /* PanelTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA2077E43B2E33FE903E16D /* PanelTool.swift */; };
 		BA98B157C39E3FF59BFE0173 /* ImagePreviewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE213E6E1A9C20818A592FB /* ImagePreviewWindow.swift */; };
@@ -185,6 +186,7 @@
 		16303EB6CB24511A24F14ED5 /* PermissionsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsWindowController.swift; sourceTree = "<group>"; };
 		166F8F300A32DD5768C4A49E /* LsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LsTool.swift; sourceTree = "<group>"; };
 		19D476EB3C648D9AE27E52AE /* NSScreen+Notch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSScreen+Notch.swift"; sourceTree = "<group>"; };
+		1C00CB5930B3DA31BE956AE2 /* NotchCallTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchCallTimer.swift; sourceTree = "<group>"; };
 		1C251B9913138986B04BF7F3 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		1C6B69E4809853822611E890 /* Tama.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tama.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1DAF4D3233A25FE4D56FA0CB /* MascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotView.swift; sourceTree = "<group>"; };
@@ -658,6 +660,7 @@
 			children = (
 				2FE6904A640A73CE3A9F65ED /* NotchActivityIndicator.swift */,
 				7A11FCF46DF7D86765B9761E /* NotchCallButton.swift */,
+				1C00CB5930B3DA31BE956AE2 /* NotchCallTimer.swift */,
 				10585A9AA99FC241A19CCF03 /* NotchNotificationPresenter.swift */,
 				D339201F4BB4EF66AE8B18AA /* NotchShape.swift */,
 				49A16FE12DF8079043A80BE5 /* NotificationDetailPanel.swift */,
@@ -918,6 +921,7 @@
 				DE6054372760E743D6A65DBF /* NightShiftTool.swift in Sources */,
 				9AD52DC621C9756E5FE40E08 /* NotchActivityIndicator.swift in Sources */,
 				5F2E019173E8F3DA76A1F4C4 /* NotchCallButton.swift in Sources */,
+				B0420A2B4724740C032F9422 /* NotchCallTimer.swift in Sources */,
 				1EC9D86E2C4AFE58F6FCB7A0 /* NotchNotificationPresenter.swift in Sources */,
 				89492D9BFA48A272C1FE2C58 /* NotchShape.swift in Sources */,
 				8205CC009D1EE20318FFAD61 /* NotificationDetailPanel.swift in Sources */,

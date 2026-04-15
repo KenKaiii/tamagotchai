@@ -120,9 +120,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         ClipboardMonitor.shared.start()
 
         // Show the persistent "Call Tama" button next to the notch
-        NotchCallButton.onCallTapped = {
-            PromptPanelController.shared.toggle()
-        }
         NotchCallButton.show()
     }
 

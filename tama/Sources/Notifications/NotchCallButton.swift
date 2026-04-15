@@ -19,9 +19,8 @@ enum NotchCallButton {
     private static var shapeLayer: CAShapeLayer?
     private static var hoverLayer: CALayer?
     private static var isVisible = false
-
-    /// Callback invoked when the button is clicked.
-    static var onCallTapped: (() -> Void)?
+    private static var isInCall = false
+    private static var labelField: NSTextField?
 
     // MARK: - Constants
 
@@ -33,6 +32,9 @@ enum NotchCallButton {
 
     /// Bottom corner radius (matching notch aesthetic).
     private static let bottomCornerRadius: CGFloat = 10
+
+    private static let expandDuration: TimeInterval = 0.4
+    private static let collapseDuration: TimeInterval = 0.25
 
     // MARK: - Public API
 
@@ -118,7 +120,10 @@ enum NotchCallButton {
             width: wingWidth - bottomCornerRadius - 4,
             height: labelHeight
         )
+        // Start with label invisible for fade-in.
+        label.alphaValue = 0
         rootView.addSubview(label)
+        labelField = label
 
         // Click overlay.
         let overlay = CallButtonOverlay(frame: rootView.bounds)
@@ -132,6 +137,9 @@ enum NotchCallButton {
         shapeLayer = shape
         hoverLayer = hover
 
+        // Animate wing expanding from notch edge.
+        animateExpand(shapeLayer: shape, hoverLayer: hover, label: label, wingHeight: wingHeight)
+
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -143,7 +151,7 @@ enum NotchCallButton {
         }
     }
 
-    /// Hide and tear down the call button.
+    /// Hide and tear down the call button with a collapse animation.
     static func hide() {
         guard isVisible else { return }
         logger.info("Hiding call button")
@@ -155,17 +163,119 @@ enum NotchCallButton {
             object: nil
         )
 
+        if isInCall {
+            isInCall = false
+            NotchCallTimer.hide()
+        }
+
+        guard let panel, let shapeLayer else {
+            teardown()
+            return
+        }
+
+        // Fade out label immediately.
+        if let labelField {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.1
+                labelField.animator().alphaValue = 0
+            }
+        }
+
+        // Collapse shape back to notch edge.
+        let wingHeight = panel.frame.height
+        let collapsedPath = collapsedWingPath(wingHeight: wingHeight)
+
+        let pathAnimation = CASpringAnimation(keyPath: "path")
+        pathAnimation.fromValue = shapeLayer.path
+        pathAnimation.toValue = collapsedPath
+        pathAnimation.damping = 18
+        pathAnimation.stiffness = 220
+        pathAnimation.mass = 1.0
+        pathAnimation.initialVelocity = 0
+        pathAnimation.duration = pathAnimation.settlingDuration
+        pathAnimation.isRemovedOnCompletion = false
+        pathAnimation.fillMode = .forwards
+        shapeLayer.add(pathAnimation, forKey: "collapsePath")
+        shapeLayer.path = collapsedPath
+
+        // After collapse, fade out and remove.
+        DispatchQueue.main.asyncAfter(deadline: .now() + collapseDuration) {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                panel.animator().alphaValue = 0
+            } completionHandler: {
+                MainActor.assumeIsolated {
+                    teardown()
+                }
+            }
+        }
+    }
+
+    private static func teardown() {
         panel?.orderOut(nil)
         panel = nil
         shapeLayer = nil
         hoverLayer = nil
+        labelField = nil
     }
 
     /// Called when the button is tapped.
     fileprivate static func handleTap() {
         ButtonSound.shared.play()
-        logger.info("Call button tapped")
-        onCallTapped?()
+        if isInCall {
+            endCall()
+        } else {
+            startCall()
+        }
+    }
+
+    /// Begin a call — switch label to "Disconnect" and show the timer wing.
+    private static func startCall() {
+        logger.info("Call started")
+        isInCall = true
+        updateLabel(disconnect: true)
+        NotchCallTimer.show()
+    }
+
+    /// End a call — revert label to "Call Tama" and hide the timer wing.
+    private static func endCall() {
+        logger.info("Call ended")
+        isInCall = false
+        updateLabel(disconnect: false)
+        NotchCallTimer.hide()
+    }
+
+    /// Update the label text and icon tint based on call state.
+    private static func updateLabel(disconnect: Bool) {
+        guard let labelField else { return }
+        let iconAttachment = NSTextAttachment()
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        if let iconImage = NSImage(systemSymbolName: "phone.fill", accessibilityDescription: "Call")?
+            .withSymbolConfiguration(iconConfig)
+        {
+            iconAttachment.image = iconImage
+        }
+        let iconColor: NSColor = disconnect
+            ? NSColor.systemRed.withAlphaComponent(0.9)
+            : NSColor.white.withAlphaComponent(0.85)
+        let textColor: NSColor = disconnect
+            ? NSColor.white.withAlphaComponent(0.85)
+            : NSColor.white.withAlphaComponent(0.85)
+        let iconString = NSMutableAttributedString(attachment: iconAttachment)
+        iconString.addAttributes(
+            [.foregroundColor: iconColor],
+            range: NSRange(location: 0, length: iconString.length)
+        )
+        let text = disconnect ? " Disconnect" : " Call Tama"
+        let textString = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: textColor,
+            ]
+        )
+        iconString.append(textString)
+        labelField.attributedStringValue = iconString
     }
 
     /// Show hover highlight.
@@ -179,6 +289,78 @@ enum NotchCallButton {
         animation.fillMode = .forwards
         hoverLayer.add(animation, forKey: "hover")
         hoverLayer.opacity = hovered ? 1.0 : 0
+    }
+
+    // MARK: - Animation
+
+    /// A thin sliver path at the notch-touching (right) edge — the starting state for expand.
+    private static func collapsedWingPath(wingHeight: CGFloat) -> CGPath {
+        let tr = topCornerRadius
+        let rect = CGRect(x: wingWidth - tr - 2, y: 0, width: tr + 2, height: wingHeight)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY + tr))
+        path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.maxY - tr))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+
+    private static func animateExpand(
+        shapeLayer: CAShapeLayer,
+        hoverLayer: CALayer,
+        label: NSTextField,
+        wingHeight: CGFloat
+    ) {
+        let collapsedPath = collapsedWingPath(wingHeight: wingHeight)
+        let expandedPath = leftWingPath(in: CGRect(x: 0, y: 0, width: wingWidth, height: wingHeight))
+
+        // Start from collapsed.
+        shapeLayer.path = collapsedPath
+        if let hoverShape = hoverLayer as? CAShapeLayer {
+            hoverShape.path = collapsedPath
+        }
+
+        // Spring animate to full wing.
+        let pathAnimation = CASpringAnimation(keyPath: "path")
+        pathAnimation.fromValue = collapsedPath
+        pathAnimation.toValue = expandedPath
+        pathAnimation.damping = 14
+        pathAnimation.stiffness = 180
+        pathAnimation.mass = 1.0
+        pathAnimation.initialVelocity = 0
+        pathAnimation.duration = pathAnimation.settlingDuration
+        pathAnimation.isRemovedOnCompletion = false
+        pathAnimation.fillMode = .forwards
+        shapeLayer.add(pathAnimation, forKey: "expandPath")
+        shapeLayer.path = expandedPath
+
+        // Also animate the hover layer shape.
+        if let hoverShape = hoverLayer as? CAShapeLayer {
+            let hoverPathAnim = CASpringAnimation(keyPath: "path")
+            hoverPathAnim.fromValue = collapsedPath
+            hoverPathAnim.toValue = expandedPath
+            hoverPathAnim.damping = 14
+            hoverPathAnim.stiffness = 180
+            hoverPathAnim.mass = 1.0
+            hoverPathAnim.initialVelocity = 0
+            hoverPathAnim.duration = hoverPathAnim.settlingDuration
+            hoverPathAnim.isRemovedOnCompletion = false
+            hoverPathAnim.fillMode = .forwards
+            hoverShape.add(hoverPathAnim, forKey: "expandPath")
+            hoverShape.path = expandedPath
+        }
+
+        // Fade in label after a short delay.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                label.animator().alphaValue = 1.0
+            }
+        }
     }
 
     // MARK: - Positioning

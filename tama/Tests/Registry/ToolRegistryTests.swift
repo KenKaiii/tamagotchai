@@ -4,10 +4,10 @@ import Testing
 
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
-    @Test("defaultRegistry creates all 19 tools")
+    @Test("defaultRegistry creates all 26 tools")
     func defaultRegistryHasAllTools() {
         let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
-        #expect(registry.tools.count == 19)
+        #expect(registry.tools.count == 26)
     }
 
     @Test("tool(named:) returns correct tool")
@@ -16,7 +16,9 @@ struct ToolRegistryTests {
         let expectedNames = [
             "bash", "read", "write", "edit", "ls", "find", "grep", "web_fetch", "web_search",
             "create_reminder", "create_routine", "list_schedules", "delete_schedule",
-            "task", "dismiss", "browser", "screenshot", "point", "skill",
+            "task", "dismiss", "browser", "screenshot", "point", "emphasize",
+            "highlight", "arrow", "countdown", "scroll_hint", "show_shortcut",
+            "skill",
         ]
         for name in expectedNames {
             let tool = registry.tool(named: name)
@@ -35,7 +37,7 @@ struct ToolRegistryTests {
     func apiToolDefinitionsShape() {
         let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
         let definitions = registry.apiToolDefinitions()
-        #expect(definitions.count == 19)
+        #expect(definitions.count == 25)
 
         for def in definitions {
             #expect(def["name"] is String, "Each definition must have a 'name' string")
@@ -77,6 +79,22 @@ struct ToolRegistryTests {
     func callRegistryHasPoint() {
         let registry = ToolRegistry.callRegistry(workingDirectory: NSTemporaryDirectory())
         #expect(registry.tool(named: "point") != nil)
+    }
+
+    @Test("callRegistry exposes every new tutor tool")
+    func callRegistryHasTutorTools() {
+        let registry = ToolRegistry.callRegistry(workingDirectory: NSTemporaryDirectory())
+        for name in ["highlight", "arrow", "countdown", "scroll_hint", "show_shortcut"] {
+            #expect(registry.tool(named: name) != nil, "Call registry missing tutor tool '\(name)'")
+        }
+    }
+
+    @Test("defaultRegistry exposes every new tutor tool")
+    func defaultRegistryHasTutorTools() {
+        let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
+        for name in ["highlight", "arrow", "countdown", "scroll_hint", "show_shortcut"] {
+            #expect(registry.tool(named: name) != nil, "Default registry missing tutor tool '\(name)'")
+        }
     }
 
     @Test("callRegistry swaps `dismiss` for `end_call` but keeps every other tool")

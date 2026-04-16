@@ -155,6 +155,24 @@ struct PointTool: AgentTool, @unchecked Sendable {
                         "or when the user needs to read the labelled target. The timer starts only " +
                         "after the move animation finishes, so the full value is 'eyes-on time'.",
                 ],
+                "upcoming": [
+                    "type": "array",
+                    "description": "Optional hint for multi-step walkthroughs: a list of upcoming " +
+                        "targets shown as faint orange ghost dots so the user sees the whole path " +
+                        "at a glance. Order matters — first item is the NEXT step after this one, " +
+                        "last is the final destination. Opacity fades from near to far. Keep to " +
+                        "≤4 items; more than that turns the screen into dot confetti. Still follow " +
+                        "the one-point-per-turn rule — `upcoming` is spatial preview, not a way to " +
+                        "fire multiple active cursors at once.",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "x": ["type": "number", "minimum": 0.0, "maximum": 1.0],
+                            "y": ["type": "number", "minimum": 0.0, "maximum": 1.0],
+                        ],
+                        "required": ["x", "y"],
+                    ],
+                ],
             ],
             "required": ["x", "y"],
         ]
@@ -175,6 +193,14 @@ struct PointTool: AgentTool, @unchecked Sendable {
         let pulse = (args["pulse"] as? Bool) ?? true
         let explicitHold = (args["hold_seconds"] as? Double)
             ?? (args["hold_seconds"] as? Int).map(Double.init)
+        let upcoming = try Self.parseUpcoming(args["upcoming"])
+
+        // Note: the legacy 3s `pacingDelay` dwell used to live here as a
+        // static stand-in for voice sync. It's been superseded by
+        // `AgentLoop.awaitSpokenChars` which gates visual tools on actual
+        // TTS playback progress — dynamic, precise, and zero-cost outside of
+        // voice calls. Keeping it would double-pace every point call by 3s
+        // and manufacture dead-air during multi-step walkthroughs.
 
         let result = try await MainActor.run { () throws -> (CGSize, Int) in
             let available = VirtualCursorController.screenCount
@@ -191,22 +217,48 @@ struct PointTool: AgentTool, @unchecked Sendable {
                 on: screen,
                 label: label,
                 pulse: pulse,
-                holdSeconds: holdSeconds
+                holdSeconds: holdSeconds,
+                upcoming: upcoming
             )
             return (screen.frame.size, available)
         }
 
         let (size, available) = result
-        let coordString = String(format: "(%.3f, %.3f)", x, y)
-        logger.info("Pointed at \(coordString) on display \(displayIndex) [\(available) available]")
+        let logSummary = String(
+            format: "Pointed at (%.3f, %.3f) on display %d [%d available]",
+            x, y, displayIndex, available
+        )
+        logger.info("\(logSummary, privacy: .public)")
 
         let labelHint = label.map { " (\($0))" } ?? ""
+        let upcomingHint = upcoming.isEmpty ? "" : " +\(upcoming.count) upcoming"
         let text = "Virtual cursor moved to (\(format(x)), \(format(y))) on display \(displayIndex)"
-            + " — \(Int(size.width))×\(Int(size.height))pt" + labelHint
+            + " — \(Int(size.width))×\(Int(size.height))pt" + labelHint + upcomingHint
         return ToolOutput(text: text)
     }
 
     // MARK: - Helpers
+
+    /// Parse the `upcoming` argument — an array of `{x, y}` dicts — into
+    /// `(Double, Double)` pairs with range validation. Returns `[]` when the
+    /// argument is missing or an empty array; throws on malformed entries.
+    private static func parseUpcoming(_ raw: Any?) throws -> [(x: Double, y: Double)] {
+        guard let raw else { return [] }
+        guard let array = raw as? [[String: Any]] else {
+            throw PointToolError.missingArgument(key: "upcoming (expected array of {x, y})")
+        }
+        return try array.map { step in
+            let sx = try readNumber(step, key: "x")
+            let sy = try readNumber(step, key: "y")
+            guard (0.0 ... 1.0).contains(sx) else {
+                throw PointToolError.outOfRange(key: "upcoming[].x", value: sx)
+            }
+            guard (0.0 ... 1.0).contains(sy) else {
+                throw PointToolError.outOfRange(key: "upcoming[].y", value: sy)
+            }
+            return (x: sx, y: sy)
+        }
+    }
 
     private static func readNumber(_ args: [String: Any], key: String) throws -> Double {
         if let value = args[key] as? Double { return value }

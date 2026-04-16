@@ -152,12 +152,49 @@ final class ScreenshotTool: AgentTool {
 
         // Enumerate displays via ScreenCaptureKit. First call may trigger the
         // Screen Recording prompt if the preflight cache hasn't been refreshed.
+        //
+        // This call also doubles as a real permission probe. `CGPreflightScreenCaptureAccess`
+        // is cached within the process lifetime and is known to lie in several
+        // cases — it can stay `true` after the user revokes access in System
+        // Settings, return `false` on macOS Sequoia even when actually granted,
+        // and go stale after code-signing identity changes (e.g. a Sparkle
+        // update). If preflight said we were granted but SCShareableContent
+        // actually fails here, that's our signal that the TCC entry is stale;
+        // surface a permission error with the recovery path instead of a vague
+        // "capture failed".
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.current
         } catch {
             logger.error("SCShareableContent failed: \(error.localizedDescription, privacy: .public)")
+            // If preflight said granted but the probe failed, the TCC state is
+            // stale — nudge the user to toggle permission in Settings.
+            if CGPreflightScreenCaptureAccess() {
+                logger
+                    .error(
+                        "Stale Screen Recording permission detected — preflight says granted but probe failed"
+                    )
+                await MainActor.run {
+                    PermissionsChecker.shared.openScreenRecordingSettings()
+                }
+                throw ScreenshotToolError.permissionDenied
+            }
             throw ScreenshotToolError.captureFailed(error.localizedDescription)
+        }
+
+        // Probe: if we were told we had access but there are no capturable
+        // windows with titles at all, TCC is lying. Real-world projects
+        // (Ice, Thaw, omi) use this exact signal to detect stale grants.
+        let hasReadableWindow = content.windows.contains { window in
+            window.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier
+                && window.title != nil
+        }
+        if !hasReadableWindow, !content.windows.isEmpty {
+            logger.error("Screen capture permission appears stale — no readable window titles")
+            await MainActor.run {
+                PermissionsChecker.shared.openScreenRecordingSettings()
+            }
+            throw ScreenshotToolError.permissionDenied
         }
 
         guard !content.displays.isEmpty else {

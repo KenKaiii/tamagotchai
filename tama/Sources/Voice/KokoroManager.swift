@@ -396,11 +396,25 @@ final class KokoroManager: ObservableObject {
         )
     }
 
+    /// Result of off-main audio generation — the PCM buffer plus per-word
+    /// timings derived from Kokoro's `TimestampPredictor`. Timings are
+    /// relative to the START of this buffer's audio (not the session) so
+    /// `SpeechService` can add the buffer's wall-clock start time to
+    /// schedule word-exact actions.
+    struct GenerationResult: @unchecked Sendable {
+        let buffer: AVAudioPCMBuffer
+        let wordTimings: [WordTiming]
+    }
+
     /// Generates audio off the main thread using a captured context. Thread-safe.
+    /// Returns both the buffer AND the per-word timings; callers that only
+    /// need audio can ignore `wordTimings`. Timings drive voice/visual sync
+    /// — see `SpeechService.registerPendingVisual` for how the cursor
+    /// firing pipeline consumes them.
     nonisolated static func generateAudioBufferOffMain(
         text: String,
         context: GenerationContext
-    ) -> AVAudioPCMBuffer? {
+    ) -> GenerationResult? {
         let logger = Logger(subsystem: "com.unstablemind.tama", category: "kokoro")
         logger.debug(
             "Generating audio — voice: \(context.voiceId), speed: \(context.speed), text: \(text.prefix(80))…"
@@ -408,7 +422,7 @@ final class KokoroManager: ObservableObject {
 
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
-            let (audio, _) = try context.engine.generateAudio(
+            let (audio, tokens) = try context.engine.generateAudio(
                 voice: context.voice,
                 language: context.language,
                 text: text,
@@ -420,10 +434,12 @@ final class KokoroManager: ObservableObject {
             let durStr = String(format: "%.2f", duration)
             let elapStr = String(format: "%.2f", elapsed)
             let rtfStr = String(format: "%.1f", rtf)
+            let timings = (tokens ?? []).toWordTimings()
             logger.info(
-                "Audio generated — \(audio.count) samples, \(durStr)s audio in \(elapStr)s (\(rtfStr)x realtime)"
+                "Audio generated — \(audio.count) samples, \(durStr)s audio in \(elapStr)s (\(rtfStr)x realtime), \(timings.count) word timings"
             )
-            return createBuffer(from: audio)
+            guard let buffer = createBuffer(from: audio) else { return nil }
+            return GenerationResult(buffer: buffer, wordTimings: timings)
         } catch {
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
             logger.error(
@@ -434,9 +450,10 @@ final class KokoroManager: ObservableObject {
     }
 
     /// Generates audio on the main actor (used for previews in VoiceSettingsView).
+    /// Returns only the buffer — preview contexts don't need word timings.
     func generateAudioBuffer(text: String) -> AVAudioPCMBuffer? {
         guard let ctx = captureGenerationContext() else { return nil }
-        return Self.generateAudioBufferOffMain(text: text, context: ctx)
+        return Self.generateAudioBufferOffMain(text: text, context: ctx)?.buffer
     }
 
     // Creates an AVAudioPCMBuffer from a float audio array.

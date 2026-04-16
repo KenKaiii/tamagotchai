@@ -132,6 +132,10 @@ final class ToolIndicatorView: NSView {
             return "Taking screenshot…"
         case "point":
             return pointDisplayName(args: args)
+        case "emphasize":
+            return "Emphasizing…"
+        case "highlight", "arrow", "countdown", "scroll_hint", "show_shortcut":
+            return tutorToolDisplayName(toolName, args: args)
         case "create_reminder", "create_routine", "list_schedules", "delete_schedule":
             return schedulingDisplayName(toolName, args: args)
         case "task":
@@ -139,6 +143,40 @@ final class ToolIndicatorView: NSView {
         case "skill":
             let skillName = compact(args["skill"], max: 28)
             return skillName.isEmpty ? "Using skill…" : "Skill  \(skillName)"
+        default:
+            return "Working…"
+        }
+    }
+
+    // MARK: - Tutor overlays
+
+    private static func tutorToolDisplayName(_ toolName: String, args: [String: String]) -> String {
+        switch toolName {
+        case "highlight":
+            if let label = compactOrNil(args["label"], max: 28) {
+                return "Highlighting  \(label)"
+            }
+            return "Highlighting area…"
+        case "arrow":
+            if let label = compactOrNil(args["label"], max: 28) {
+                return "Drawing  \(label)"
+            }
+            return "Drawing arrow…"
+        case "countdown":
+            if let seconds = args["seconds"] {
+                return "Counting  \(seconds)s"
+            }
+            return "Counting down…"
+        case "scroll_hint":
+            if let direction = compactOrNil(args["direction"], max: 12) {
+                return "Scroll hint  \(direction)"
+            }
+            return "Scroll hint…"
+        case "show_shortcut":
+            if let shortcut = compactOrNil(args["shortcut"], max: 20) {
+                return "Shortcut  \(shortcut)"
+            }
+            return "Showing shortcut…"
         default:
             return "Working…"
         }

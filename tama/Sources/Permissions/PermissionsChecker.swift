@@ -57,7 +57,10 @@ private func requestSpeechAccess(
 @MainActor
 final class PermissionsChecker {
     static let shared = PermissionsChecker()
-    private init() {}
+
+    private init() {
+        installAccessibilityObserver()
+    }
 
     // Cached permission states to reduce log spam
     private var lastAccessibilityState: Bool?
@@ -68,6 +71,37 @@ final class PermissionsChecker {
     private var lastNotificationsState: UNAuthorizationStatus?
     private var lastScreenRecordingState: Bool?
 
+    /// macOS posts `com.apple.accessibility.api` via `DistributedNotificationCenter`
+    /// whenever ANY app's Accessibility permission state changes in System
+    /// Settings. Subscribing lets us refresh our cached trust state the
+    /// instant the user grants — without this, `AXIsProcessTrusted()`
+    /// keeps returning its last-cached value inside the running process
+    /// and users think the app "needs a restart". Pattern used by every
+    /// production AX-dependent app: Loop, MonitorControl, CopilotForXcode,
+    /// Squirrel, Informant, etc.
+    private func installAccessibilityObserver() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Short delay to let the AX daemon finalise the change before
+            // we re-query — matches the 100ms used by Loop, Squirrel, Moves.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                guard let self else { return }
+                let previous = self.lastAccessibilityState
+                let granted = AXIsProcessTrusted()
+                if previous != granted {
+                    self.lastAccessibilityState = granted
+                    logger
+                        .info(
+                            "Accessibility permission changed (live): \(previous.map { $0 ? "granted" : "denied" } ?? "unknown") → \(granted ? "granted" : "denied")"
+                        )
+                }
+            }
+        }
+    }
+
     // MARK: - Accessibility
 
     /// The AXTrustedCheckOptionPrompt key, extracted once to avoid Swift 6 concurrency warnings
@@ -75,14 +109,16 @@ final class PermissionsChecker {
     private let axTrustedPromptKey = "AXTrustedCheckOptionPrompt"
 
     func isAccessibilityGranted() -> Bool {
-        // AXIsProcessTrusted() can return false for ad-hoc signed builds even when
-        // accessibility is actually working. Use AXIsProcessTrustedWithOptions as a
-        // secondary check without prompting.
-        var granted = AXIsProcessTrusted()
-        if !granted {
-            let options = [axTrustedPromptKey: false] as CFDictionary
-            granted = AXIsProcessTrustedWithOptions(options)
-        }
+        // Canonical API. If this returns false while the user believes
+        // they've granted permission, the root cause is almost always a
+        // binary-path / code-signature mismatch — macOS keys Accessibility
+        // trust to the signed designated requirement, so a prior-granted
+        // binary at a different path (release install, older DMG) counts as
+        // a DIFFERENT app from the current Xcode-built Debug binary even
+        // though the bundle ID matches. Fix by removing Tama from
+        // System Settings › Privacy & Security › Accessibility and
+        // re-adding the current binary.
+        let granted = AXIsProcessTrusted()
         if lastAccessibilityState != granted {
             lastAccessibilityState = granted
             logger.info("Accessibility permission: \(granted ? "granted" : "denied")")

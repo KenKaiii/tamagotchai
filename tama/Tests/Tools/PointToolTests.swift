@@ -135,7 +135,7 @@ struct PointToolTests {
         let properties = schema["properties"] as? [String: Any]
         #expect(properties != nil)
         let keys = Set(properties?.keys ?? [:].keys)
-        #expect(keys == Set(["x", "y", "display", "label", "pulse", "hold_seconds"]))
+        #expect(keys == Set(["x", "y", "display", "label", "pulse", "hold_seconds", "upcoming"]))
     }
 
     @Test("x and y have 0-1 range bounds")

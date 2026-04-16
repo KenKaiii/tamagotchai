@@ -40,7 +40,7 @@ struct FindToolTests {
             encoding: .utf8
         )
 
-        let result = try await tool.execute(args: ["pattern": "*.swift"])
+        let result = try await tool.execute(args: ["pattern": "*.swift"]).text
         #expect(result.contains("main.swift"))
         #expect(result.contains("helper.swift"))
         #expect(!result.contains("readme.md"))
@@ -63,7 +63,7 @@ struct FindToolTests {
             encoding: .utf8
         )
 
-        let result = try await tool.execute(args: ["pattern": "*"])
+        let result = try await tool.execute(args: ["pattern": "*"]).text
         #expect(result.contains("app.swift"))
         #expect(!result.contains("config"))
         cleanup()
@@ -71,7 +71,7 @@ struct FindToolTests {
 
     @Test("no matches returns message")
     func noMatchesReturnsMessage() async throws {
-        let result = try await tool.execute(args: ["pattern": "*.xyz"])
+        let result = try await tool.execute(args: ["pattern": "*.xyz"]).text
         #expect(result.contains("No files found"))
         cleanup()
     }
@@ -89,7 +89,7 @@ struct FindToolTests {
             )
         }
 
-        let result = try await tool.execute(args: ["pattern": "*.txt"])
+        let result = try await tool.execute(args: ["pattern": "*.txt"]).text
         #expect(result.contains("100 of"))
         cleanup()
     }

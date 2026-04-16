@@ -46,7 +46,7 @@ final class BashTool: AgentTool {
     /// Maximum output size in bytes (10 MB).
     private static let maxOutputBytes = 10 * 1024 * 1024
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let command = args["command"] as? String else {
             throw BashToolError.missingCommand
         }
@@ -90,12 +90,12 @@ final class BashTool: AgentTool {
                 "Bash command complete: exitCode=\(exitCode), outputLength=\(rawOutput.count), timedOut=\(didTimeout)"
             )
 
-        return formatResult(
+        return ToolOutput(text: formatResult(
             exitCode: exitCode,
             output: truncate(rawOutput),
             didTimeout: didTimeout,
             timeoutMs: timeoutMs
-        )
+        ))
     }
 
     // MARK: - Helpers

@@ -108,6 +108,28 @@ struct ModelInfo: Identifiable {
     let maxOutputTokens: Int
     let supportsTools: Bool
     let supportsThinking: Bool
+    /// Whether the model accepts image inputs (vision). Defaults to false.
+    let supportsVision: Bool
+
+    init(
+        id: String,
+        name: String,
+        provider: AIProvider,
+        contextWindow: Int,
+        maxOutputTokens: Int,
+        supportsTools: Bool,
+        supportsThinking: Bool,
+        supportsVision: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.provider = provider
+        self.contextWindow = contextWindow
+        self.maxOutputTokens = maxOutputTokens
+        self.supportsTools = supportsTools
+        self.supportsThinking = supportsThinking
+        self.supportsVision = supportsVision
+    }
 }
 
 /// Central registry of available models.
@@ -120,7 +142,8 @@ enum ModelRegistry {
             contextWindow: 200_000,
             maxOutputTokens: 16384,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: true
         ),
         ModelInfo(
             id: "xiaomi-token-plan-sgp/mimo-v2-pro",
@@ -129,7 +152,8 @@ enum ModelRegistry {
             contextWindow: 1_048_576,
             maxOutputTokens: 32000,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: false
         ),
         ModelInfo(
             id: "gpt-5.4",
@@ -138,7 +162,8 @@ enum ModelRegistry {
             contextWindow: 1_050_000,
             maxOutputTokens: 128_000,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: true
         ),
         ModelInfo(
             id: "gpt-5.4-mini",
@@ -147,7 +172,8 @@ enum ModelRegistry {
             contextWindow: 400_000,
             maxOutputTokens: 128_000,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: true
         ),
         ModelInfo(
             id: "gpt-5.3-codex",
@@ -156,7 +182,8 @@ enum ModelRegistry {
             contextWindow: 400_000,
             maxOutputTokens: 128_000,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: true
         ),
         ModelInfo(
             id: "codex-mini-latest",
@@ -165,7 +192,8 @@ enum ModelRegistry {
             contextWindow: 200_000,
             maxOutputTokens: 100_000,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: false
         ),
         ModelInfo(
             id: "MiniMax-M2.7",
@@ -174,7 +202,8 @@ enum ModelRegistry {
             contextWindow: 204_800,
             maxOutputTokens: 16384,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: false
         ),
         ModelInfo(
             id: "MiniMax-M2.7-highspeed",
@@ -183,7 +212,8 @@ enum ModelRegistry {
             contextWindow: 204_800,
             maxOutputTokens: 16384,
             supportsTools: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: false
         ),
     ]
 

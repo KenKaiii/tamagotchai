@@ -34,7 +34,7 @@ struct EditToolTests {
             "file_path": "edit.txt",
             "old_text": "foo bar",
             "new_text": "FOO BAR",
-        ])
+        ]).text
         #expect(result.contains("-foo bar"))
         #expect(result.contains("+FOO BAR"))
         let content = try readFile("edit.txt")
@@ -82,7 +82,7 @@ struct EditToolTests {
             "file_path": "crlf.txt",
             "old_text": "line2",
             "new_text": "LINE2",
-        ])
+        ]).text
         #expect(result.contains("+LINE2"))
         cleanup()
     }

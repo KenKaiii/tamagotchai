@@ -37,7 +37,7 @@ final class WriteTool: AgentTool {
         var errorDescription: String? { message }
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let filePath = args["file_path"] as? String else {
             throw ToolError(message: "Missing required parameter: file_path")
         }
@@ -70,6 +70,6 @@ final class WriteTool: AgentTool {
         }
 
         logger.info("Write complete: \(data.count) bytes to \(absolutePath, privacy: .public)")
-        return "Wrote \(data.count) bytes to \(absolutePath)"
+        return ToolOutput(text: "Wrote \(data.count) bytes to \(absolutePath)")
     }
 }

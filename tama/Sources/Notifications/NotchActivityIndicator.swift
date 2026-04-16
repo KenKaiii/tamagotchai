@@ -42,11 +42,29 @@ enum NotchActivityIndicator {
     private static let expandDuration: TimeInterval = 0.4
     private static let collapseDuration: TimeInterval = 0.25
 
+    /// Minimum time the indicator stays on-screen once shown. Tools that throw
+    /// permission errors in <50ms would otherwise flash invisibly. This keeps
+    /// the label readable for any tool call, short or long.
+    private static let minVisibleDuration: TimeInterval = 0.6
+
+    // When each active process was added. Used to compute the remaining
+    // `minVisibleDuration` hold if it's removed too quickly.
+    private static var processStartTimes: [String: Date] = [:]
+
+    /// Timer that delays hiding the indicator to satisfy `minVisibleDuration`.
+    /// Only non-nil when a "hold" is pending.
+    private static var pendingHideTimer: Timer?
+
     // MARK: - Public API
 
     /// Register a new active process. Shows the indicator if not already visible.
     static func addProcess(id: String, label: String) {
+        // A new tool call interrupts any pending hide — we have fresh content.
+        pendingHideTimer?.invalidate()
+        pendingHideTimer = nil
+
         processes[id] = ProcessInfo(label: label)
+        processStartTimes[id] = Date()
         lastUpdatedID = id
         logger.info("Activity add process '\(id)': '\(label)' (total: \(processes.count))")
 
@@ -58,17 +76,45 @@ enum NotchActivityIndicator {
     }
 
     /// Remove a process by ID. Hides the indicator when no processes remain.
+    /// If the indicator has been visible for less than `minVisibleDuration`,
+    /// hiding is delayed so the user actually sees the label.
     static func removeProcess(id: String) {
         guard processes.removeValue(forKey: id) != nil else { return }
-        logger.info("Activity remove process '\(id)' (remaining: \(processes.count))")
+        let startedAt = processStartTimes.removeValue(forKey: id) ?? Date()
+        let visibleFor = Date().timeIntervalSince(startedAt)
+        logger
+            .info(
+                "Activity remove process '\(id)' (remaining: \(processes.count), visible \(String(format: "%.2f", visibleFor))s)"
+            )
 
         if processes.isEmpty {
-            hide()
+            scheduleHide(afterVisibleFor: visibleFor)
         } else {
             if lastUpdatedID == id {
                 lastUpdatedID = processes.keys.first
             }
             refreshDisplayText()
+        }
+    }
+
+    /// Hide the indicator immediately, respecting `minVisibleDuration`. If the
+    /// indicator was shown for less than the minimum, schedule the hide on a
+    /// timer; otherwise hide right away.
+    private static func scheduleHide(afterVisibleFor visibleFor: TimeInterval) {
+        pendingHideTimer?.invalidate()
+        let remaining = minVisibleDuration - visibleFor
+        if remaining <= 0 {
+            hide()
+            return
+        }
+        pendingHideTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                // Only hide if nothing new was added in the meantime.
+                if processes.isEmpty {
+                    hide()
+                }
+                pendingHideTimer = nil
+            }
         }
     }
 

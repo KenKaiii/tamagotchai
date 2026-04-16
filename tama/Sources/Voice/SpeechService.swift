@@ -61,6 +61,28 @@ final class SpeechService {
     /// so that Kokoro can start generating audio while more text streams in.
     private var hasFlushedFirst = false
 
+    // MARK: - Telemetry Callbacks
+
+    /// Fires the first time a TTS chunk is handed to Kokoro in a streaming session.
+    var onFirstChunkEnqueued: (@MainActor () -> Void)?
+    /// Fires the first time a generated audio buffer lands in the play queue.
+    var onFirstAudioReady: (@MainActor () -> Void)?
+    /// Fires the first time the audio engine starts playing a buffer this session.
+    var onFirstAudioPlayback: (@MainActor () -> Void)?
+    /// Fires when a playback gap is detected (queue empty while stream still active).
+    /// Argument is the gap duration in seconds.
+    var onPlaybackGap: (@MainActor (TimeInterval) -> Void)?
+
+    // Internal flags + timestamps driving the telemetry callbacks above.
+    private var firstChunkEnqueuedFired = false
+    private var firstAudioReadyFired = false
+    private var firstAudioPlaybackFired = false
+    /// Time the audio engine finished playing the last buffer, if the queue
+    /// was empty and more utterances were still pending (we're waiting for
+    /// Kokoro). Compared against the next playNextBuffer() call to compute
+    /// mid-stream dead-air gaps.
+    private var playbackUnderrunAt: Date?
+
     /// Serial queue for Kokoro TTS generation. KokoroTTS uses NLTagger internally
     /// (via MisakiSwift G2P) which is not thread-safe and crashes with EXC_BAD_ACCESS
     /// if called concurrently from multiple threads.
@@ -82,10 +104,18 @@ final class SpeechService {
     /// Lower = faster time-to-first-audio, higher = more natural speech.
     private static let eagerFlushChars = 30
 
+    /// After the first flush, if the buffer grows past this many characters
+    /// and contains a clause boundary (comma, semicolon, dash), we drain up to
+    /// that boundary instead of waiting for a sentence-ending punctuation.
+    /// Keeps Kokoro continuously fed during long sentences so playback never
+    /// outruns generation (dead-air prevention).
+    private static let clauseFlushChars = 60
+
     /// How long to wait after the last chunk before auto-flushing the buffer.
-    /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses
-    /// (between sentences, before tool calls, or at end of response).
-    private static let flushDelay: TimeInterval = 0.6
+    /// Tokens arrive every ~20-50ms so the timer only fires during genuine
+    /// pauses. Tight value keeps end-of-turn lag minimal while still allowing
+    /// the LLM to naturally pause mid-sentence without truncation.
+    private static let flushDelay: TimeInterval = 0.3
 
     private init() {
         audioEngine.attach(playerNode)
@@ -110,6 +140,10 @@ final class SpeechService {
         nextSlotIndex = 0
         nextPlaySlot = 0
         orderedSlots.removeAll()
+        firstChunkEnqueuedFired = false
+        firstAudioReadyFired = false
+        firstAudioPlaybackFired = false
+        playbackUnderrunAt = nil
         prewarmEngine()
         logger.info("Streaming speech session started")
     }
@@ -334,28 +368,48 @@ final class SpeechService {
         options: []
     )
 
+    /// Clause-boundary pattern: comma, semicolon, colon, em/en dash followed
+    /// by whitespace. Used for mid-sentence draining once the buffer gets big
+    /// enough to avoid dead air waiting for sentence-ending punctuation.
+    // swiftlint:disable:next force_try
+    private static let clausePattern = try! NSRegularExpression(
+        pattern: "[,;:—–]\\s+",
+        options: []
+    )
+
     /// Extracts complete sentences from the buffer and enqueues them for speech.
+    /// If no sentence boundary is present but the buffer has grown past
+    /// `clauseFlushChars`, we fall back to draining at the latest clause
+    /// boundary. This keeps Kokoro continuously fed during long sentences and
+    /// prevents playback from outrunning generation (dead air).
     private func drainSentences() {
         let cleaned = stripMarkdown(streamBuffer)
-
         let range = NSRange(cleaned.startIndex..., in: cleaned)
-        let matches = Self.sentencePattern.matches(in: cleaned, options: [], range: range)
 
-        guard let lastMatch = matches.last else { return }
+        // Prefer sentence boundaries when available.
+        if let lastMatch = Self.sentencePattern.matches(in: cleaned, range: range).last {
+            drainAt(boundaryEnd: lastMatch.range.location + lastMatch.range.length, cleaned: cleaned, kind: "sentence")
+            return
+        }
 
-        let splitIndex = cleaned.index(
-            cleaned.startIndex,
-            offsetBy: lastMatch.range.location + lastMatch.range.length
-        )
+        // No sentence boundary yet — drain at last clause boundary once buffer
+        // has enough content that generation latency would bite.
+        guard cleaned.count >= Self.clauseFlushChars,
+              let lastClause = Self.clausePattern.matches(in: cleaned, range: range).last
+        else { return }
+        drainAt(boundaryEnd: lastClause.range.location + lastClause.range.length, cleaned: cleaned, kind: "clause")
+    }
+
+    /// Drains the buffer up to (and including) the given boundary index.
+    private func drainAt(boundaryEnd: Int, cleaned: String, kind: String) {
+        let splitIndex = cleaned.index(cleaned.startIndex, offsetBy: boundaryEnd)
         let toSpeak = String(cleaned[..<splitIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
         let remainder = String(cleaned[splitIndex...])
-
         streamBuffer = remainder
         logger
             .info(
-                "drainSentences — spoke: \(toSpeak.prefix(80), privacy: .public), remainder: \(remainder.prefix(40), privacy: .public)"
+                "drain(\(kind, privacy: .public)) — spoke: \(toSpeak.prefix(80), privacy: .public), remainder: \(remainder.prefix(40), privacy: .public)"
             )
-
         if !toSpeak.isEmpty {
             enqueueSentences(from: toSpeak)
         }
@@ -480,6 +534,11 @@ final class SpeechService {
         pendingUtterances += 1
         logger.info("Enqueuing: \(text.prefix(60))…")
 
+        if !firstChunkEnqueuedFired {
+            firstChunkEnqueuedFired = true
+            onFirstChunkEnqueued?()
+        }
+
         let manager = KokoroManager.shared
         guard manager.isDownloaded else {
             logger.warning("Kokoro not downloaded, skipping: \(text.prefix(40))…")
@@ -522,6 +581,10 @@ final class SpeechService {
     /// and drains any consecutive ready slots into the playback queue.
     private func slotReady(slot: Int, buffer: AVAudioPCMBuffer) {
         orderedSlots[slot] = buffer
+        if !firstAudioReadyFired {
+            firstAudioReadyFired = true
+            onFirstAudioReady?()
+        }
         drainReadySlots()
     }
 
@@ -556,10 +619,24 @@ final class SpeechService {
     /// Plays the next buffer in the queue if nothing is currently playing.
     private func playNextBuffer() {
         guard !isPlaying, !bufferQueue.isEmpty else { return }
+
+        // If we underran (queue emptied while more utterances were pending),
+        // the gap between underrun and this call is audible dead air.
+        if let underranAt = playbackUnderrunAt {
+            let gap = Date().timeIntervalSince(underranAt)
+            onPlaybackGap?(gap)
+            playbackUnderrunAt = nil
+        }
+
         isPlaying = true
 
         let buffer = bufferQueue.removeFirst()
         ensureEngineRunning(format: buffer.format)
+
+        if !firstAudioPlaybackFired {
+            firstAudioPlaybackFired = true
+            onFirstAudioPlayback?()
+        }
 
         playerNode.scheduleBuffer(buffer) { [weak self] in
             Task { @MainActor in
@@ -569,6 +646,11 @@ final class SpeechService {
 
                 if !self.bufferQueue.isEmpty {
                     self.playNextBuffer()
+                } else if self.pendingUtterances > 0, self.isStreaming {
+                    // Buffer queue is empty but more text is on its way and we
+                    // haven't finished streaming. Record an underrun; the next
+                    // playNextBuffer() will report the gap.
+                    self.playbackUnderrunAt = Date()
                 }
             }
         }

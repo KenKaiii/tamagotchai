@@ -29,6 +29,15 @@ final class CallSession {
     private var isResponding = false
     private var isActive = false
 
+    /// Per-turn telemetry — user speech timing, agent TTFB, TTS latency,
+    /// dead-air detection. Summary printed to the `callmetrics` log category
+    /// at the end of each turn.
+    private let metrics = CallMetrics()
+    /// Last tool name emitted by the agent, so we can record its duration when
+    /// the matching `.toolResult` event arrives.
+    private var pendingToolName: String?
+    private var pendingToolStart: CFAbsoluteTime?
+
     // NOTE: Interrupt detection is intentionally disabled. On macOS without headphones,
     // AVAudioEngine VP is too aggressive (silences user voice too), and without VP the
     // speech recognizer doesn't produce reliable transcripts during TTS playback.
@@ -42,6 +51,10 @@ final class CallSession {
     private static let greeting = "Hey, what can I help you with today?"
 
     /// Starts the voice call — speaks a greeting, then begins listening.
+    ///
+    /// Pre-warms the provider HTTP connection and Kokoro TTS engine while the
+    /// greeting plays so the first real user turn pays zero cold-start cost.
+    /// Both pre-warms are fire-and-forget — failures are non-fatal.
     func start() {
         guard !isActive else {
             logger.warning("start() called but already active — ignoring")
@@ -49,6 +62,13 @@ final class CallSession {
         }
         logger.info("━━━ CALL SESSION START ━━━")
         isActive = true
+        installMetricsHooks()
+
+        // Fire pre-warms immediately, before anything blocking. The TLS
+        // handshake and Kokoro graph build overlap with the greeting TTS so
+        // by the time the user finishes speaking, both are ready.
+        ClaudeService.shared.prewarmConnection(for: ProviderStore.shared.selectedModel.provider)
+        KokoroManager.shared.prewarm()
 
         let session = ChatSession(
             id: UUID(),
@@ -101,6 +121,7 @@ final class CallSession {
         isResponding = false
 
         clearVoiceCallbacks()
+        clearMetricsHooks()
         saveSession()
 
         // swiftformat:disable:next redundantSelf
@@ -150,6 +171,7 @@ final class CallSession {
         isListening = true
         isResponding = false
         NotchCallTimer.setMode(.listening)
+        metrics.beginTurn()
 
         VoiceService.shared.startFollowUpCapture(
             muteAudio: true,
@@ -158,13 +180,48 @@ final class CallSession {
         )
     }
 
+    // MARK: - Metrics Wiring
+
+    /// Installs telemetry callbacks on VoiceService and SpeechService so the
+    /// CallMetrics accumulator can record each phase's timing. Installed once
+    /// per call start; cleared in `end()`.
+    private func installMetricsHooks() {
+        VoiceService.shared.onFirstSpeech = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.metrics.noteFirstSpeech()
+            }
+        }
+        SpeechService.shared.onFirstChunkEnqueued = { [weak self] in
+            self?.metrics.noteFirstTTSEnqueue()
+        }
+        SpeechService.shared.onFirstAudioReady = { [weak self] in
+            self?.metrics.noteFirstAudioReady()
+        }
+        SpeechService.shared.onFirstAudioPlayback = { [weak self] in
+            self?.metrics.noteFirstAudioPlayback()
+        }
+        SpeechService.shared.onPlaybackGap = { [weak self] gap in
+            self?.metrics.notePlaybackGap(gap)
+        }
+    }
+
+    private func clearMetricsHooks() {
+        VoiceService.shared.onFirstSpeech = nil
+        SpeechService.shared.onFirstChunkEnqueued = nil
+        SpeechService.shared.onFirstAudioReady = nil
+        SpeechService.shared.onFirstAudioPlayback = nil
+        SpeechService.shared.onPlaybackGap = nil
+    }
+
     // MARK: - Speech Handling
 
     private func handleCaptureComplete(_ text: String) {
         guard isActive else { return }
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        logger.info("[SPEECH] Received — length=\(trimmed.count)")
+        let words = trimmed.split { $0.isWhitespace }.count
+        logger.info("[SPEECH] Received — \(words) words, \(trimmed.count) chars")
+        metrics.noteSilenceDetected(wordCount: words)
 
         guard !trimmed.isEmpty else {
             logger.info("[SPEECH] Empty transcript — restarting listening")
@@ -197,6 +254,7 @@ final class CallSession {
         NotchCallTimer.setAudioLevel(0)
 
         SpeechService.shared.beginStreaming()
+        metrics.noteAgentRequestSent()
 
         let messages = conversationHistory
         logger.info("[AGENT] Sending \(messages.count) messages")
@@ -229,6 +287,8 @@ final class CallSession {
                 logger.info("[AGENT] Waiting for TTS...")
                 await SpeechService.shared.finishStreaming()
                 logger.info("[AGENT] TTS finished")
+                metrics.noteTTSFinished()
+                metrics.endTurn()
 
                 guard isActive else {
                     saveSession()
@@ -244,6 +304,8 @@ final class CallSession {
                 NotchActivityIndicator.removeProcess(id: "call-agent")
                 conversationHistory = error.conversation
                 await SpeechService.shared.finishStreaming()
+                metrics.noteTTSFinished()
+                metrics.endTurn()
                 saveSession()
                 // End the call via NotchCallButton (updates UI + calls self.end())
                 NotchCallButton.endCall()
@@ -277,17 +339,26 @@ final class CallSession {
         guard isActive else { return }
         switch event {
         case let .textDelta(delta):
+            metrics.noteFirstDelta(delta)
             SpeechService.shared.feedChunk(delta)
             NotchActivityIndicator.removeProcess(id: "call-agent")
         case let .toolStart(name, id):
             logger.info("[EVENT] toolStart: \(name) (id=\(id))")
+            pendingToolName = name
+            pendingToolStart = CFAbsoluteTimeGetCurrent()
             SpeechService.shared.flushBuffer()
             let detail = ToolIndicatorView.displayName(for: name)
             NotchActivityIndicator.addProcess(id: "call-agent", label: detail)
         case let .toolRunning(name, args):
             let detail = ToolIndicatorView.displayName(for: name, args: args)
             NotchActivityIndicator.updateDetail(id: "call-agent", text: detail)
-        case .toolResult:
+        case let .toolResult(name, _):
+            if let start = pendingToolStart, pendingToolName == name {
+                let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                metrics.noteToolComplete(name: name, durationMs: ms)
+            }
+            pendingToolName = nil
+            pendingToolStart = nil
             NotchActivityIndicator.removeProcess(id: "call-agent")
         case let .turnComplete(text):
             logger.info("[EVENT] turnComplete — \(text.count) chars")

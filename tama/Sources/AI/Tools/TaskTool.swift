@@ -59,7 +59,7 @@ final class TaskTool: AgentTool {
         ]
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let action = args["action"] as? String else {
             throw TaskToolError.missingParam("action")
         }
@@ -67,16 +67,17 @@ final class TaskTool: AgentTool {
             throw TaskToolError.missingParam("title")
         }
 
-        switch action {
+        let text: String = switch action {
         case "create":
-            return await handleCreate(title: title, args: args)
+            await handleCreate(title: title, args: args)
         case "update":
-            return await handleUpdate(title: title, args: args)
+            await handleUpdate(title: title, args: args)
         case "delete":
-            return await handleDelete(title: title, args: args)
+            await handleDelete(title: title, args: args)
         default:
-            return "{\"error\": \"Unknown action: \(action). Use create, update, or delete.\"}"
+            "{\"error\": \"Unknown action: \(action). Use create, update, or delete.\"}"
         }
+        return ToolOutput(text: text)
     }
 
     // MARK: - Create

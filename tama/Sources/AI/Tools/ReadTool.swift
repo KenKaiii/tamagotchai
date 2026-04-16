@@ -63,7 +63,7 @@ final class ReadTool: AgentTool {
 
     // MARK: - Execute
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let filePath = args["file_path"] as? String else {
             throw ToolError.invalidArguments("Missing required argument: file_path")
         }
@@ -77,7 +77,7 @@ final class ReadTool: AgentTool {
 
         if FileSystemToolHelpers.binaryExtensions.contains(url.pathExtension.lowercased()) {
             logger.warning("Binary file detected: \(resolvedPath, privacy: .public)")
-            return "Binary file detected: \(filename)"
+            return ToolOutput(text: "Binary file detected: \(filename)")
         }
 
         let content = try readUTF8(url: url, filename: filename)
@@ -86,7 +86,7 @@ final class ReadTool: AgentTool {
 
         let result = formatLines(slice)
         logger.info("Read complete: \(slice.count) lines returned")
-        return result
+        return ToolOutput(text: result)
     }
 
     // MARK: - Helpers

@@ -36,7 +36,7 @@ struct SkillTool: AgentTool {
         ]
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let skillName = args["skill"] as? String else {
             throw SkillToolError.missingSkillName
         }
@@ -60,11 +60,11 @@ struct SkillTool: AgentTool {
         }
 
         if let error = result.error {
-            return error
+            return ToolOutput(text: error)
         }
 
         guard let skill = result.skill else {
-            return "Error: Could not load skill"
+            return ToolOutput(text: "Error: Could not load skill")
         }
 
         var parts: [String] = []
@@ -76,7 +76,7 @@ struct SkillTool: AgentTool {
 
         parts.append("Treat the above skill instructions as authoritative. Follow them to complete the task.")
 
-        return parts.joined(separator: "\n\n")
+        return ToolOutput(text: parts.joined(separator: "\n\n"))
     }
 }
 

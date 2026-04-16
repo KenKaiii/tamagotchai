@@ -18,12 +18,12 @@ final class ListSchedulesTool: AgentTool {
         ]
     }
 
-    func execute(args _: [String: Any]) async throws -> String {
+    func execute(args _: [String: Any]) async throws -> ToolOutput {
         let jobs = await ScheduleStore.shared.listJobs()
         logger.info("Listing \(jobs.count) active schedules")
 
         if jobs.isEmpty {
-            return "{\"schedules\": [], \"message\": \"No active schedules.\"}"
+            return ToolOutput(text: "{\"schedules\": [], \"message\": \"No active schedules.\"}")
         }
 
         let formatter = ISO8601DateFormatter()
@@ -51,6 +51,7 @@ final class ListSchedulesTool: AgentTool {
             withJSONObject: ["schedules": entries],
             options: .prettyPrinted
         )
-        return String(data: data, encoding: .utf8) ?? "{\"error\": \"serialization failed\"}"
+        let text = String(data: data, encoding: .utf8) ?? "{\"error\": \"serialization failed\"}"
+        return ToolOutput(text: text)
     }
 }

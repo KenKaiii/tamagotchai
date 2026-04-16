@@ -34,6 +34,7 @@ struct OnboardingView: View {
     @State private var appManagementGranted = false
     @State private var notificationsGranted = false
     @State private var documentsFolderGranted = false
+    @State private var screenRecordingGranted = false
     @State private var permissionPollTimer: Timer?
     @State private var axObserver: NSObjectProtocol?
 
@@ -267,6 +268,32 @@ struct OnboardingView: View {
                 Divider().opacity(0.3).padding(.horizontal, 14)
 
                 permissionRow(
+                    title: "Screen Recording",
+                    description: screenRecordingGranted
+                        ? "Screenshot tool during chats and voice calls"
+                        : "Click Grant, then toggle Tama on in System Settings",
+                    granted: screenRecordingGranted
+                ) {
+                    OnboardingController.yieldToSystemUI()
+                    if screenRecordingGranted {
+                        PermissionsChecker.shared.openScreenRecordingSettings()
+                    } else {
+                        // First call may trigger the system TCC dialog; if it
+                        // returns false we also open Settings so the user can
+                        // toggle the switch manually.
+                        _ = PermissionsChecker.shared.requestScreenRecording()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            screenRecordingGranted = PermissionsChecker.shared.isScreenRecordingGranted()
+                            if !screenRecordingGranted {
+                                PermissionsChecker.shared.openScreenRecordingSettings()
+                            }
+                        }
+                    }
+                }
+
+                Divider().opacity(0.3).padding(.horizontal, 14)
+
+                permissionRow(
                     title: "Notifications",
                     description: "Reminders and routine alerts",
                     granted: notificationsGranted
@@ -394,6 +421,7 @@ struct OnboardingView: View {
         speechGranted = checker.isSpeechRecognitionGranted()
         appManagementGranted = checker.isAppManagementGranted()
         notificationsGranted = checker.isNotificationsGranted()
+        screenRecordingGranted = checker.isScreenRecordingGranted()
     }
 
     private func startPermissionPolling() {

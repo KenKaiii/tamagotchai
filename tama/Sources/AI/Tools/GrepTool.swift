@@ -50,7 +50,7 @@ final class GrepTool: AgentTool {
         self.workingDirectory = workingDirectory
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         let params = try parseArgs(args)
         let pat = params.pattern
         let pth = params.standardizedPath
@@ -67,7 +67,7 @@ final class GrepTool: AgentTool {
         )
         let result = searchFiles(filesToSearch, regex: regex, maxResults: params.maxResults)
         logger.info("Grep complete: \(filesToSearch.count) files searched")
-        return result
+        return ToolOutput(text: result)
     }
 
     // MARK: - Private Helpers

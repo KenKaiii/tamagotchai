@@ -94,6 +94,14 @@ All logging uses `os.Logger` with subsystem `com.unstablemind.tama`. Categories 
 log stream --predicate 'subsystem == "com.unstablemind.tama"' --level debug           # All logs
 log stream --predicate 'subsystem == "com.unstablemind.tama" AND category == "agent"' --level debug  # Agent only
 log stream --predicate 'subsystem == "com.unstablemind.tama" AND category BEGINSWITH "tool."' --level debug  # Tools only
+
+# Voice call diagnosis — all pipeline logs (listen → agent → TTS → playback)
+log stream --predicate 'subsystem == "com.unstablemind.tama" AND category IN {"callsession", "callmetrics", "voice", "speech", "kokoro", "agent"}' --style compact
+
+# Just the per-turn metric summaries with ⚠️ SLOW warnings
+log stream --predicate 'subsystem == "com.unstablemind.tama" AND category == "callmetrics"' --style compact
+
+# Convenience: `scripts/call-logs.sh` streams the full call pipeline
 ```
 
 ## Code Rules

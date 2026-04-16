@@ -27,7 +27,7 @@ struct GrepToolTests {
     @Test("regex pattern finds matches with line numbers")
     func regexPatternFindsMatches() async throws {
         try writeFile("test.txt", content: "apple\nbanana\napricot\ncherry\n")
-        let result = try await tool.execute(args: ["pattern": "ap"])
+        let result = try await tool.execute(args: ["pattern": "ap"]).text
         #expect(result.contains("test.txt:1:apple"))
         #expect(result.contains("test.txt:3:apricot"))
         #expect(!result.contains("banana"))
@@ -37,7 +37,7 @@ struct GrepToolTests {
     @Test("case insensitive flag works")
     func caseInsensitiveSearch() async throws {
         try writeFile("case.txt", content: "Hello\nhello\nHELLO\nworld\n")
-        let result = try await tool.execute(args: ["pattern": "hello", "case_insensitive": true])
+        let result = try await tool.execute(args: ["pattern": "hello", "case_insensitive": true]).text
         #expect(result.contains("case.txt:1:Hello"))
         #expect(result.contains("case.txt:2:hello"))
         #expect(result.contains("case.txt:3:HELLO"))
@@ -48,7 +48,7 @@ struct GrepToolTests {
     func includeGlobFilters() async throws {
         try writeFile("code.swift", content: "let x = 1\n")
         try writeFile("notes.md", content: "let x = 1\n")
-        let result = try await tool.execute(args: ["pattern": "let", "include": "*.swift"])
+        let result = try await tool.execute(args: ["pattern": "let", "include": "*.swift"]).text
         #expect(result.contains("code.swift"))
         #expect(!result.contains("notes.md"))
         cleanup()
@@ -61,7 +61,7 @@ struct GrepToolTests {
             lines += "match line \(i)\n"
         }
         try writeFile("many.txt", content: lines)
-        let result = try await tool.execute(args: ["pattern": "match", "max_results": 5])
+        let result = try await tool.execute(args: ["pattern": "match", "max_results": 5]).text
         // Should mention total matches found
         #expect(result.contains("20 match(es) found"))
         cleanup()
@@ -70,7 +70,7 @@ struct GrepToolTests {
     @Test("no matches returns message")
     func noMatchesReturnsMessage() async throws {
         try writeFile("empty.txt", content: "nothing here\n")
-        let result = try await tool.execute(args: ["pattern": "zzzzz"])
+        let result = try await tool.execute(args: ["pattern": "zzzzz"]).text
         #expect(result.contains("No matches found"))
         cleanup()
     }

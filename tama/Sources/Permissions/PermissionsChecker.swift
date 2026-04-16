@@ -66,6 +66,7 @@ final class PermissionsChecker {
     private var lastSpeechState: Bool?
     private var lastAppManagementState: Bool?
     private var lastNotificationsState: UNAuthorizationStatus?
+    private var lastScreenRecordingState: Bool?
 
     // MARK: - Accessibility
 
@@ -214,6 +215,33 @@ final class PermissionsChecker {
 
     func openAppManagementSettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
+        NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Screen Recording
+
+    /// Returns true if the app has Screen Recording permission. Uses
+    /// `CGPreflightScreenCaptureAccess` so the system dialog is never shown.
+    /// Note: this value is cached by the system within a process lifetime, so
+    /// revocation may not be reflected until restart.
+    func isScreenRecordingGranted() -> Bool {
+        let granted = CGPreflightScreenCaptureAccess()
+        if lastScreenRecordingState != granted {
+            lastScreenRecordingState = granted
+            logger.info("Screen Recording permission: \(granted ? "granted" : "denied")")
+        }
+        return granted
+    }
+
+    /// Triggers the system Screen Recording prompt the first time the app
+    /// requests access. Returns true if access was already (or is now) granted.
+    @discardableResult
+    func requestScreenRecording() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    func openScreenRecordingSettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
         NSWorkspace.shared.open(url)
     }
 

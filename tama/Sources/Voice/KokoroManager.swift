@@ -198,6 +198,36 @@ final class KokoroManager: ObservableObject {
         }
     }
 
+    /// Pre-loads model + voice AND runs a tiny warm-up generation so the MLX
+    /// compute graph, phonemizer, and Metal kernels are ready before the first
+    /// real TTS call. Eliminates the 0.3–1.0s cold-start on first-chunk
+    /// generation that shows up in CallMetrics as "TTS gen (first chunk)".
+    ///
+    /// Fire-and-forget: runs off-main on the TTS generation queue. Safe to
+    /// call multiple times — subsequent calls are cheap because the engine
+    /// is already loaded.
+    func prewarm() {
+        guard isDownloaded else {
+            logger.debug("Skipping Kokoro pre-warm — not downloaded")
+            return
+        }
+        guard let context = captureGenerationContext() else {
+            logger.warning("Kokoro pre-warm — no generation context available")
+            return
+        }
+        logger.info("Pre-warming Kokoro engine + voice '\(context.voiceId, privacy: .public)'")
+        let start = CFAbsoluteTimeGetCurrent()
+        Task.detached(priority: .userInitiated) {
+            // A short punctuated phrase runs the full pipeline (phonemizer +
+            // MLX inference + waveform) without producing user-audible output
+            // since we discard the buffer.
+            _ = Self.generateAudioBufferOffMain(text: "Ready.", context: context)
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            let logger = Logger(subsystem: "com.unstablemind.tama", category: "kokoro")
+            logger.info("Kokoro pre-warm complete in \(ms)ms")
+        }
+    }
+
     /// Frees the TTS engine, voice embeddings, and GPU memory.
     func unload() {
         let hadEngine = ttsEngine != nil

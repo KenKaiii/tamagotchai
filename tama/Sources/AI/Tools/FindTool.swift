@@ -38,7 +38,7 @@ final class FindTool: AgentTool {
         self.workingDirectory = workingDirectory
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let pattern = args["pattern"] as? String else {
             throw ToolError(message: "Missing required parameter: pattern")
         }
@@ -48,7 +48,7 @@ final class FindTool: AgentTool {
         let searchPath = FileSystemToolHelpers.resolvePath(pathArg, workingDirectory: workingDirectory)
 
         let standardized = (searchPath as NSString).standardizingPath
-        return try findFiles(pattern: pattern, in: standardized)
+        return try ToolOutput(text: findFiles(pattern: pattern, in: standardized))
     }
 
     private func findFiles(

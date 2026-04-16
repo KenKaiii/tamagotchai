@@ -24,8 +24,8 @@ struct EndCallTool: AgentTool, @unchecked Sendable {
         "required": [] as [String],
     ]
 
-    func execute(args _: [String: Any]) async throws -> String {
+    func execute(args _: [String: Any]) async throws -> ToolOutput {
         logger.info("End call tool invoked")
-        return "Call ending."
+        return ToolOutput(text: "Call ending.")
     }
 }

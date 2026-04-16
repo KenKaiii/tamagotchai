@@ -39,7 +39,7 @@ struct LsToolTests {
             encoding: .utf8
         )
 
-        let result = try await tool.execute(args: [:])
+        let result = try await tool.execute(args: [:]).text
         let lines = result.components(separatedBy: "\n")
 
         // Directories should come first
@@ -68,7 +68,7 @@ struct LsToolTests {
             encoding: .utf8
         )
 
-        let result = try await tool.execute(args: [:])
+        let result = try await tool.execute(args: [:]).text
         #expect(result.contains("visible.txt"))
         #expect(!result.contains(".hidden"))
         cleanup()
@@ -87,7 +87,7 @@ struct LsToolTests {
             encoding: .utf8
         )
 
-        let result = try await tool.execute(args: ["all": true])
+        let result = try await tool.execute(args: ["all": true]).text
         #expect(result.contains("visible.txt"))
         #expect(result.contains(".hidden"))
         cleanup()
@@ -95,7 +95,7 @@ struct LsToolTests {
 
     @Test("empty directory returns message")
     func emptyDirectory() async throws {
-        let result = try await tool.execute(args: [:])
+        let result = try await tool.execute(args: [:]).text
         #expect(result == "(empty directory)")
         cleanup()
     }

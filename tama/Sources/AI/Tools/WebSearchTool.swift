@@ -64,9 +64,9 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
 
     // MARK: - Execution
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let query = args["query"] as? String, !query.isEmpty else {
-            return "Error: Missing required parameter 'query'."
+            return ToolOutput(text: "Error: Missing required parameter 'query'.")
         }
 
         let maxResults = min((args["max_results"] as? NSNumber)?.intValue ?? 5, 20)
@@ -76,7 +76,9 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
 
         if results.isEmpty {
             logger.error("All search engines exhausted for query: \"\(query, privacy: .public)\"")
-            return "No search results found for: \"\(query)\". All search engines were unavailable or returned no results."
+            return ToolOutput(
+                text: "No search results found for: \"\(query)\". All search engines were unavailable or returned no results."
+            )
         }
 
         var output = "Web search results for: \"\(query)\"\n\n"
@@ -90,7 +92,7 @@ final class WebSearchTool: AgentTool, @unchecked Sendable {
         output += "(\(results.count) results from \(engine.rawValue))"
 
         logger.info("Search complete: \(results.count) results from \(engine.rawValue, privacy: .public)")
-        return output
+        return ToolOutput(text: output)
     }
 
     // MARK: - Search Cascade

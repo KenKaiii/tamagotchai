@@ -23,11 +23,11 @@ struct DismissTool: AgentTool, @unchecked Sendable {
         "required": [] as [String],
     ]
 
-    func execute(args _: [String: Any]) async throws -> String {
+    func execute(args _: [String: Any]) async throws -> ToolOutput {
         logger.info("Dismiss tool invoked — requesting panel close")
         await MainActor.run {
             NotificationCenter.default.post(name: .agentRequestedDismiss, object: nil)
         }
-        return "Panel dismiss requested."
+        return ToolOutput(text: "Panel dismiss requested.")
     }
 }

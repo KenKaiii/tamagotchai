@@ -38,7 +38,7 @@ final class LsTool: AgentTool {
         self.workingDirectory = workingDirectory
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         let pathArg = args["path"] as? String ?? "."
         let showAll = args["all"] as? Bool ?? false
         logger.info("Listing directory: \(pathArg, privacy: .public), showAll: \(showAll)")
@@ -96,10 +96,10 @@ final class LsTool: AgentTool {
         logger.info("Listing complete: \(dirs.count) dirs, \(files.count) files")
 
         if lines.isEmpty {
-            return "(empty directory)"
+            return ToolOutput(text: "(empty directory)")
         }
 
-        return lines.joined(separator: "\n")
+        return ToolOutput(text: lines.joined(separator: "\n"))
     }
 
     private static func formatSize(_ bytes: UInt64) -> String {

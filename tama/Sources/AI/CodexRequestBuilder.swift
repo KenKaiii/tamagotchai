@@ -60,7 +60,8 @@ enum CodexRequestBuilder {
     // MARK: - Message Conversion
 
     /// Convert Anthropic-format messages to Codex input array.
-    private static func convertMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
+    /// Internal so the test suite can exercise format conversion directly.
+    static func convertMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
         var input: [[String: Any]] = []
 
         for msg in messages {
@@ -75,32 +76,43 @@ enum CodexRequestBuilder {
                 continue
             }
 
-            // User messages with array content (may contain tool_result blocks)
+            // User messages with array content (may contain text, image, and/or
+            // tool_result blocks). Adjacent text+image blocks merge into one
+            // user input item so vision works in a single conversation turn.
             if role == "user", let blocks = msg["content"] as? [[String: Any]] {
+                var pendingMixed: [[String: Any]] = []
+
+                func flushPending() {
+                    guard !pendingMixed.isEmpty else { return }
+                    input.append(["role": "user", "content": pendingMixed])
+                    pendingMixed = []
+                }
+
                 for block in blocks {
                     guard let type = block["type"] as? String else { continue }
 
                     if type == "text", let text = block["text"] as? String {
-                        input.append([
-                            "role": "user",
-                            "content": [["type": "input_text", "text": text]],
+                        pendingMixed.append(["type": "input_text", "text": text])
+                    } else if type == "image",
+                              let source = block["source"] as? [String: Any],
+                              let mediaType = source["media_type"] as? String,
+                              let data = source["data"] as? String
+                    {
+                        pendingMixed.append([
+                            "type": "input_image",
+                            "image_url": "data:\(mediaType);base64,\(data)",
                         ])
                     } else if type == "tool_result",
-                              let toolUseId = block["tool_use_id"] as? String,
-                              let content = block["content"] as? String
+                              let toolUseId = block["tool_use_id"] as? String
                     {
-                        // Extract just the call_id part (before the pipe)
-                        let callId = toolUseId.contains("|")
-                            ? String(toolUseId.split(separator: "|").first!)
-                            : toolUseId
-
-                        input.append([
-                            "type": "function_call_output",
-                            "call_id": remapId(callId),
-                            "output": content,
-                        ])
+                        flushPending()
+                        input.append(contentsOf: convertToolResult(
+                            toolUseId: toolUseId,
+                            content: block["content"]
+                        ))
                     }
                 }
+                flushPending()
                 continue
             }
 
@@ -154,6 +166,70 @@ enum CodexRequestBuilder {
         }
 
         return input
+    }
+
+    /// Convert a tool_result block's content to one or more Codex input items:
+    /// a `function_call_output` with the text portion, plus an optional
+    /// `role:"user"` message carrying any image blocks as `input_image` data
+    /// URLs.
+    private static func convertToolResult(toolUseId: String, content: Any?) -> [[String: Any]] {
+        // Extract just the call_id part (before the pipe).
+        let callId = toolUseId.contains("|")
+            ? String(toolUseId.split(separator: "|").first!)
+            : toolUseId
+        let mappedCallId = remapId(callId)
+
+        // Simple string content: single function_call_output, no images.
+        if let str = content as? String {
+            return [[
+                "type": "function_call_output",
+                "call_id": mappedCallId,
+                "output": str,
+            ]]
+        }
+
+        guard let parts = content as? [[String: Any]] else {
+            return []
+        }
+
+        var textParts: [String] = []
+        var imageItems: [[String: Any]] = []
+
+        for part in parts {
+            guard let type = part["type"] as? String else { continue }
+            if type == "text", let text = part["text"] as? String {
+                textParts.append(text)
+            } else if type == "image",
+                      let source = part["source"] as? [String: Any],
+                      let mediaType = source["media_type"] as? String,
+                      let data = source["data"] as? String
+            {
+                imageItems.append([
+                    "type": "input_image",
+                    "image_url": "data:\(mediaType);base64,\(data)",
+                ])
+            }
+        }
+
+        var result: [[String: Any]] = [[
+            "type": "function_call_output",
+            "call_id": mappedCallId,
+            "output": textParts.isEmpty ? "" : textParts.joined(separator: "\n"),
+        ]]
+
+        if !imageItems.isEmpty {
+            var userContent: [[String: Any]] = [[
+                "type": "input_text",
+                "text": "Screenshot attached from the previous tool call.",
+            ]]
+            userContent.append(contentsOf: imageItems)
+            result.append([
+                "role": "user",
+                "content": userContent,
+            ])
+        }
+
+        return result
     }
 
     // MARK: - Tool Conversion

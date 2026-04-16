@@ -57,6 +57,11 @@ final class VoiceService: @unchecked Sendable {
     /// Called when speech capture fails to start (e.g., microphone error).
     var onError: ((String) -> Void)?
 
+    /// Called once per capture session the first time the mic's RMS crosses the
+    /// speech threshold — i.e. the user started speaking. Consumed by
+    /// `CallMetrics` to time silence detection latency.
+    var onFirstSpeech: (() -> Void)?
+
     // MARK: - Audio & Speech
 
     private var audioEngine: AVAudioEngine?
@@ -84,6 +89,9 @@ final class VoiceService: @unchecked Sendable {
 
     /// Whether the user has spoken at all during this capture.
     private var hasSpoken = false
+
+    /// Whether the RMS has crossed the speech threshold in this capture (for telemetry).
+    private var firstSpeechFired = false
 
     /// Last time speech was detected (RMS above threshold).
     private var lastHeard: Date?
@@ -137,6 +145,7 @@ final class VoiceService: @unchecked Sendable {
         state = .followUp
         capturedTranscript = ""
         hasSpoken = false
+        firstSpeechFired = false
         lastHeard = Date()
         lastTranscriptUpdate = nil
 
@@ -284,12 +293,14 @@ final class VoiceService: @unchecked Sendable {
     private func finalize() {
         guard state == .followUp else { return }
         let text = capturedTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        logger.info("Speech capture finalized — text length: \(text.count)")
+        let words = text.split { $0.isWhitespace }.count
+        logger.info("🔇 Speech capture finalized — \(words) words, \(text.count) chars")
 
         haltPipeline()
         state = .idle
         capturedTranscript = ""
         hasSpoken = false
+        firstSpeechFired = false
         lastTranscriptUpdate = nil
 
         onCaptureComplete?(text)
@@ -322,9 +333,13 @@ final class VoiceService: @unchecked Sendable {
             }
 
             if audioSilent, transcriptIdle {
-                let audioIdle = String(format: "%.1f", now.timeIntervalSince(lastAudio))
-                let txIdle = String(format: "%.1f", now.timeIntervalSince(lastTranscriptUpdate ?? now))
-                logger.info("Silence detected — audio idle \(audioIdle)s, transcript idle \(txIdle)s")
+                let audioIdle = String(format: "%.2f", now.timeIntervalSince(lastAudio))
+                let txIdle = String(format: "%.2f", now.timeIntervalSince(lastTranscriptUpdate ?? now))
+                let window = String(format: "%.1f", silenceWindow)
+                logger
+                    .info(
+                        "🔇 Silence trigger (window=\(window)s, audio idle \(audioIdle)s, transcript idle \(txIdle)s)"
+                    )
                 finalize()
             }
         }
@@ -359,6 +374,13 @@ final class VoiceService: @unchecked Sendable {
         let threshold = max(minSpeechRMS, noiseFloorRMS * speechBoostFactor)
         if rms >= threshold {
             lastHeard = Date()
+            if !firstSpeechFired {
+                // Mic crossed the speech threshold for the first time this
+                // capture. Fire the telemetry hook so CallMetrics can start
+                // measuring "how long did the user speak".
+                firstSpeechFired = true
+                onFirstSpeech?()
+            }
         }
     }
 

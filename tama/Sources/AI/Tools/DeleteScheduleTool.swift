@@ -24,7 +24,7 @@ final class DeleteScheduleTool: AgentTool {
         ]
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let name = args["name"] as? String else {
             throw DeleteScheduleError.missingParam("name")
         }
@@ -33,9 +33,9 @@ final class DeleteScheduleTool: AgentTool {
         logger.info("Delete schedule '\(name)': \(deleted ? "success" : "not found")")
 
         if deleted {
-            return "{\"success\": true, \"message\": \"Deleted schedule '\(name)'.\"}"
+            return ToolOutput(text: "{\"success\": true, \"message\": \"Deleted schedule '\(name)'.\"}")
         } else {
-            return "{\"success\": false, \"message\": \"No schedule found with name '\(name)'.\"}"
+            return ToolOutput(text: "{\"success\": false, \"message\": \"No schedule found with name '\(name)'.\"}")
         }
     }
 }

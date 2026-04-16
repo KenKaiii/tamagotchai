@@ -52,8 +52,11 @@ final class AgentLoop {
 
         for turn in 0 ..< maxTurns {
             try Task.checkCancellation()
-            logger.info("Agent loop turn \(turn + 1)")
+            logger.info("▶︎ Agent loop turn \(turn + 1) — \(conversation.count) msgs")
 
+            let requestStart = CFAbsoluteTimeGetCurrent()
+            nonisolated(unsafe) var firstDeltaAt: CFAbsoluteTime?
+            nonisolated(unsafe) var deltaCount = 0
             let response: ClaudeResponse
             do {
                 response = try await claude.sendWithTools(
@@ -66,6 +69,10 @@ final class AgentLoop {
                             // Stream text deltas immediately for smooth UI typing animation.
                             // Previously these were buffered until a tool call, which caused
                             // non-tool responses (especially voice) to appear all at once.
+                            if firstDeltaAt == nil {
+                                firstDeltaAt = CFAbsoluteTimeGetCurrent()
+                            }
+                            deltaCount += 1
                             onEvent(.textDelta(text))
                         }
                         if case let .toolUseStart(id, name) = event {
@@ -76,11 +83,26 @@ final class AgentLoop {
                     }
                 )
             } catch {
+                let elapsed = Int((CFAbsoluteTimeGetCurrent() - requestStart) * 1000)
                 logger
                     .error(
-                        "sendWithTools failed on turn \(turn + 1, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        "✗ sendWithTools failed on turn \(turn + 1) after \(elapsed)ms: \(error.localizedDescription, privacy: .public)"
                     )
                 throw error
+            }
+
+            let totalMs = Int((CFAbsoluteTimeGetCurrent() - requestStart) * 1000)
+            if let ttfb = firstDeltaAt {
+                let ttfbMs = Int((ttfb - requestStart) * 1000)
+                logger
+                    .info(
+                        "✅ Turn \(turn + 1) done — TTFB \(ttfbMs)ms, total \(totalMs)ms, \(deltaCount) deltas, stop=\(response.stopReason ?? "nil")"
+                    )
+            } else {
+                logger
+                    .info(
+                        "✅ Turn \(turn + 1) done — no text deltas, total \(totalMs)ms, stop=\(response.stopReason ?? "nil")"
+                    )
             }
 
             // Build the assistant message content for conversation
@@ -106,7 +128,6 @@ final class AgentLoop {
             let shouldContinue =
                 response.stopReason == "tool_use" && !toolCalls.isEmpty
             if !shouldContinue {
-                logger.info("Turn complete — stop_reason=\(response.stopReason ?? "nil")")
                 onEvent(.turnComplete(text: accumulatedText))
                 return conversation
             }
@@ -171,9 +192,10 @@ final class AgentLoop {
         onEvent: @escaping @Sendable (AgentEvent) -> Void
     ) async -> [[String: Any]] {
         var results: [[String: Any]] = []
+        let modelSupportsVision = claude.currentModel.supportsVision
 
         for call in toolCalls {
-            let output: String
+            let toolOutput: ToolOutput
             nonisolated(unsafe) let args = call.input
 
             // Emit toolRunning with string-coerced args for the UI indicator.
@@ -186,30 +208,62 @@ final class AgentLoop {
                 let startTime = CFAbsoluteTimeGetCurrent()
                 logger.info("Tool execution start: \(call.name) (args: \(Array(call.input.keys)))")
                 do {
-                    output = try await tool.execute(args: args)
+                    toolOutput = try await tool.execute(args: args)
                     let durationMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
-                    logger.info("Tool execution complete: \(call.name) — \(output.count) chars, \(durationMs)ms")
+                    let imgCount = toolOutput.images.count
+                    logger
+                        .info(
+                            "Tool execution complete: \(call.name) — \(toolOutput.text.count) chars, \(imgCount) images, \(durationMs)ms"
+                        )
                 } catch {
                     let durationMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
                     logger
                         .error("Tool execution failed: \(call.name) — \(error.localizedDescription) (\(durationMs)ms)")
-                    output = "Error: \(error.localizedDescription)"
+                    toolOutput = ToolOutput(text: "Error: \(error.localizedDescription)")
                 }
             } else {
                 logger.warning("Unknown tool requested: \(call.name)")
-                output = "Error: Unknown tool '\(call.name)'"
+                toolOutput = ToolOutput(text: "Error: Unknown tool '\(call.name)'")
             }
 
-            let truncated = truncateOutput(output)
+            let truncated = truncateOutput(toolOutput.text)
             onEvent(
                 .toolResult(name: call.name, output: truncated)
             )
 
-            results.append([
-                "type": "tool_result",
-                "tool_use_id": call.id,
-                "content": truncated,
-            ])
+            // If the tool produced images and the active model supports vision,
+            // emit a tool_result with array content carrying both text and image
+            // blocks. Otherwise discard images and emit text-only.
+            if !toolOutput.images.isEmpty, modelSupportsVision {
+                var content: [[String: Any]] = [["type": "text", "text": truncated]]
+                for img in toolOutput.images {
+                    content.append([
+                        "type": "image",
+                        "source": [
+                            "type": "base64",
+                            "media_type": img.mediaType,
+                            "data": img.data.base64EncodedString(),
+                        ] as [String: Any],
+                    ])
+                }
+                results.append([
+                    "type": "tool_result",
+                    "tool_use_id": call.id,
+                    "content": content,
+                ])
+            } else {
+                if !toolOutput.images.isEmpty {
+                    logger
+                        .info(
+                            "Discarding \(toolOutput.images.count) image(s) from '\(call.name)' — model does not support vision"
+                        )
+                }
+                results.append([
+                    "type": "tool_result",
+                    "tool_use_id": call.id,
+                    "content": truncated,
+                ])
+            }
         }
 
         return results

@@ -59,7 +59,7 @@ final class EditTool: AgentTool {
         self.workingDirectory = workingDirectory
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let filePath = args["file_path"] as? String else {
             throw ToolError.missingParameter("file_path")
         }
@@ -121,7 +121,7 @@ final class EditTool: AgentTool {
         )
 
         logger.info("Edit complete: \(absolutePath, privacy: .public)")
-        return diff
+        return ToolOutput(text: diff)
     }
 
     // MARK: - Private helpers

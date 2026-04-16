@@ -61,7 +61,7 @@ final class BrowserTool: AgentTool {
 
     // MARK: - Execution
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let action = args["action"] as? String else {
             throw BrowserToolError.missingParameter("action")
         }
@@ -76,26 +76,27 @@ final class BrowserTool: AgentTool {
 
         let connection = try await BrowserManager.shared.ensureConnected(headless: headless)
 
-        switch action {
+        let text: String = switch action {
         case "navigate":
-            return try await navigate(args: args, connection: connection, timeoutMs: timeoutMs)
+            try await navigate(args: args, connection: connection, timeoutMs: timeoutMs)
         case "click":
-            return try await click(args: args, connection: connection)
+            try await click(args: args, connection: connection)
         case "type":
-            return try await typeText(args: args, connection: connection)
+            try await typeText(args: args, connection: connection)
         case "get_text":
-            return try await getText(args: args, connection: connection)
+            try await getText(args: args, connection: connection)
         case "get_html":
-            return try await getHTML(args: args, connection: connection)
+            try await getHTML(args: args, connection: connection)
         case "screenshot":
-            return try await screenshot(connection: connection)
+            try await screenshot(connection: connection)
         case "evaluate":
-            return try await evaluate(args: args, connection: connection)
+            try await evaluate(args: args, connection: connection)
         case "wait":
-            return try await waitForSelector(args: args, connection: connection, timeoutMs: timeoutMs)
+            try await waitForSelector(args: args, connection: connection, timeoutMs: timeoutMs)
         default:
             throw BrowserToolError.missingParameter("action (unknown action: \(action))")
         }
+        return ToolOutput(text: text)
     }
 
     // MARK: - Actions

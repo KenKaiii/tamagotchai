@@ -29,7 +29,7 @@ struct BrowserToolIntegrationTests {
         let start = CFAbsoluteTimeGetCurrent()
         let result = try await tool.execute(args: mergedArgs)
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
-        return (result, elapsed)
+        return (result.text, elapsed)
     }
 
     /// Navigate to the test page (idempotent if already there).
@@ -252,8 +252,7 @@ struct BrowserToolIntegrationTests {
     @Test("screenshot returns expected format")
     func screenshotFormat() async throws {
         let (result, ms) = try await timed(["action": "screenshot"])
-        #expect(result.contains("Screenshot captured"))
-        #expect(result.contains("base64 PNG"))
+        #expect(result.contains("Screenshot saved to"))
         print("⏱ Screenshot: \(String(format: "%.0f", ms))ms")
     }
 

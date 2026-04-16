@@ -12,27 +12,27 @@ struct BashToolTests {
 
     @Test("echo hello returns exit code 0 and output")
     func echoHello() async throws {
-        let result = try await tool.execute(args: ["command": "echo hello"])
+        let result = try await tool.execute(args: ["command": "echo hello"]).text
         #expect(result.contains("Exit code: 0"))
         #expect(result.contains("hello"))
     }
 
     @Test("failing command returns non-zero exit code")
     func failingCommand() async throws {
-        let result = try await tool.execute(args: ["command": "exit 42"])
+        let result = try await tool.execute(args: ["command": "exit 42"]).text
         #expect(result.contains("Exit code: 42"))
     }
 
     @Test("short timeout causes timeout message")
     func shortTimeout() async throws {
-        let result = try await tool.execute(args: ["command": "sleep 10", "timeout": 500])
+        let result = try await tool.execute(args: ["command": "sleep 10", "timeout": 500]).text
         #expect(result.contains("timed out"))
     }
 
     @Test("output truncation with large output")
     func outputTruncation() async throws {
         // Generate more than 2000 lines
-        let result = try await tool.execute(args: ["command": "seq 1 3000"])
+        let result = try await tool.execute(args: ["command": "seq 1 3000"]).text
         #expect(result.contains("truncated"))
     }
 
@@ -48,7 +48,7 @@ struct BashToolTests {
 
     @Test("captures stderr output")
     func capturesStderr() async throws {
-        let result = try await tool.execute(args: ["command": "echo error >&2"])
+        let result = try await tool.execute(args: ["command": "echo error >&2"]).text
         #expect(result.contains("error"))
     }
 }

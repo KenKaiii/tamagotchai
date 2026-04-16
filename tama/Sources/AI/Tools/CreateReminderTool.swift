@@ -36,7 +36,7 @@ final class CreateReminderTool: AgentTool {
         ]
     }
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let name = args["name"] as? String else {
             throw CreateReminderError.missingParam("name")
         }
@@ -49,7 +49,7 @@ final class CreateReminderTool: AgentTool {
 
         guard let parsed = ScheduleParser.parseSchedule(schedule) else {
             logger.warning("Failed to parse schedule: \(schedule)")
-            return "{\"error\": \"Could not parse schedule: \(schedule)\"}"
+            return ToolOutput(text: "{\"error\": \"Could not parse schedule: \(schedule)\"}")
         }
 
         let job = await ScheduleStore.shared.addJob(
@@ -62,10 +62,10 @@ final class CreateReminderTool: AgentTool {
         logger.info("Created reminder '\(name)' nextRun=\(String(describing: job.nextRunAt))")
 
         let nextRun = job.nextRunAt.map { ISO8601DateFormatter().string(from: $0) } ?? "unknown"
-        return """
+        return ToolOutput(text: """
         {"success": true, "name": "\(name)", "type": "reminder", \
         "schedule_type": "\(parsed.type.rawValue)", "next_run": "\(nextRun)"}
-        """
+        """)
     }
 }
 

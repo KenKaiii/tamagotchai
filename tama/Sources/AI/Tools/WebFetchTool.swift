@@ -47,7 +47,7 @@ final class WebFetchTool: AgentTool {
 
     // MARK: - Execution
 
-    func execute(args: [String: Any]) async throws -> String {
+    func execute(args: [String: Any]) async throws -> ToolOutput {
         guard let urlString = args["url"] as? String else {
             throw WebFetchError.missingURL
         }
@@ -86,7 +86,7 @@ final class WebFetchTool: AgentTool {
 
         guard (200 ... 299).contains(httpResponse.statusCode) else {
             logger.error("HTTP error \(httpResponse.statusCode) for URL: \(urlString, privacy: .public)")
-            return "HTTP error: \(httpResponse.statusCode)"
+            return ToolOutput(text: "HTTP error: \(httpResponse.statusCode)")
         }
 
         // Read incrementally up to maxResponseBytes.
@@ -111,11 +111,11 @@ final class WebFetchTool: AgentTool {
         if text.count > maxLength {
             let truncated = String(text.prefix(maxLength))
             logger.info("Fetch complete: \(text.count) chars, truncated=true")
-            return truncated + "\n[...truncated at \(maxLength) chars]"
+            return ToolOutput(text: truncated + "\n[...truncated at \(maxLength) chars]")
         }
 
         logger.info("Fetch complete: \(text.count) chars, truncated=false")
-        return text
+        return ToolOutput(text: text)
     }
 
     // MARK: - Content Extraction

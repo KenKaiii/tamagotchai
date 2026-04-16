@@ -29,6 +29,40 @@ final class ClaudeService {
         ProviderStore.shared.selectedModel
     }
 
+    // MARK: - Connection Pre-Warming
+
+    /// Opens a TCP+TLS connection to the provider's base URL so the first real
+    /// streaming request doesn't pay TLS handshake + DNS lookup latency. Fire
+    /// this when the user starts a voice call — the first user turn will then
+    /// reuse the warm socket from `streamingSession`'s connection pool.
+    ///
+    /// Fire-and-forget; any error is harmless because the real request will
+    /// try again from scratch.
+    func prewarmConnection(for provider: AIProvider) {
+        guard let host = URL(string: provider.baseURL)?.host,
+              let warmURL = URL(string: "https://\(host)/")
+        else { return }
+        logger.info("Pre-warming connection to \(host, privacy: .public)")
+        var request = URLRequest(url: warmURL)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 5
+        // Use the SAME streamingSession as real requests so the connection
+        // lands in the right pool. Response status doesn't matter — a 404 on
+        // `/` is fine, we only need the TLS handshake to complete.
+        let session = streamingSession
+        Task.detached(priority: .utility) {
+            let start = CFAbsoluteTimeGetCurrent()
+            let result = try? await session.data(for: request)
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            let logger = Logger(subsystem: "com.unstablemind.tama", category: "claude")
+            if result == nil {
+                logger.debug("Connection pre-warm to \(host, privacy: .public) completed in \(ms)ms (error ignored)")
+            } else {
+                logger.info("Connection pre-warmed to \(host, privacy: .public) in \(ms)ms")
+            }
+        }
+    }
+
     // MARK: - API
 
     /// Maximum retries for rate-limit (429) errors before giving up.
@@ -420,7 +454,8 @@ final class ClaudeService {
     /// Convert an Anthropic-format message to OpenAI format.
     /// Returns an array because one Anthropic message (with multiple tool_results)
     /// may expand into multiple OpenAI messages.
-    private func convertMessageToOpenAI(_ msg: [String: Any]) -> [[String: Any]] {
+    /// Internal so the test suite can exercise format conversion directly.
+    func convertMessageToOpenAI(_ msg: [String: Any]) -> [[String: Any]] {
         guard let role = msg["role"] as? String else { return [msg] }
 
         // Simple string content
@@ -468,28 +503,108 @@ final class ClaudeService {
             return [result]
         }
 
-        // For user messages with tool_result blocks — each becomes a separate message
+        // For user messages with tool_result blocks — each becomes a separate message.
+        // For user messages mixing text and image blocks (vision input), emit a
+        // single user message with array content.
         if role == "user" {
             var converted: [[String: Any]] = []
+            var pendingMixed: [[String: Any]] = []
+
+            func flushPending() {
+                guard !pendingMixed.isEmpty else { return }
+                converted.append(["role": "user", "content": pendingMixed])
+                pendingMixed = []
+            }
+
             for block in blocks {
                 guard let type = block["type"] as? String else { continue }
                 if type == "text", let text = block["text"] as? String {
-                    converted.append(["role": "user", "content": text])
-                } else if type == "tool_result",
-                          let toolUseId = block["tool_use_id"] as? String,
-                          let content = block["content"] as? String
+                    pendingMixed.append(["type": "text", "text": text])
+                } else if type == "image",
+                          let source = block["source"] as? [String: Any],
+                          let mediaType = source["media_type"] as? String,
+                          let data = source["data"] as? String
                 {
-                    converted.append([
-                        "role": "tool",
-                        "tool_call_id": toolUseId,
-                        "content": content,
+                    pendingMixed.append([
+                        "type": "image_url",
+                        "image_url": ["url": "data:\(mediaType);base64,\(data)"],
                     ])
+                } else if type == "tool_result",
+                          let toolUseId = block["tool_use_id"] as? String
+                {
+                    flushPending()
+                    converted.append(contentsOf: convertToolResultToOpenAI(
+                        toolUseId: toolUseId,
+                        content: block["content"]
+                    ))
                 }
             }
+            flushPending()
             if !converted.isEmpty { return converted }
         }
 
         return [msg]
+    }
+
+    /// Convert an Anthropic `tool_result` block's content to an OpenAI
+    /// `role:"tool"` message, plus an optional follow-up `role:"user"` message
+    /// carrying any image blocks as `image_url` data URLs (Moonshot/Xiaomi
+    /// vision format). Tool_results may have either string content or an array
+    /// of typed blocks.
+    func convertToolResultToOpenAI(toolUseId: String, content: Any?) -> [[String: Any]] {
+        // Simple string content: emit a single tool message.
+        if let str = content as? String {
+            return [[
+                "role": "tool",
+                "tool_call_id": toolUseId,
+                "content": str,
+            ]]
+        }
+
+        guard let parts = content as? [[String: Any]] else {
+            return []
+        }
+
+        var textParts: [String] = []
+        var imageParts: [[String: Any]] = []
+
+        for part in parts {
+            guard let type = part["type"] as? String else { continue }
+            if type == "text", let text = part["text"] as? String {
+                textParts.append(text)
+            } else if type == "image",
+                      let source = part["source"] as? [String: Any],
+                      let mediaType = source["media_type"] as? String,
+                      let data = source["data"] as? String
+            {
+                imageParts.append([
+                    "type": "image_url",
+                    "image_url": ["url": "data:\(mediaType);base64,\(data)"],
+                ])
+            }
+        }
+
+        var result: [[String: Any]] = []
+        let toolText = textParts.isEmpty ? "" : textParts.joined(separator: "\n")
+        result.append([
+            "role": "tool",
+            "tool_call_id": toolUseId,
+            "content": toolText,
+        ])
+
+        if !imageParts.isEmpty {
+            var userContent: [[String: Any]] = [[
+                "type": "text",
+                "text": "Screenshot attached from the previous tool call.",
+            ]]
+            userContent.append(contentsOf: imageParts)
+            result.append([
+                "role": "user",
+                "content": userContent,
+            ])
+        }
+
+        return result
     }
 
     /// Convert an Anthropic tool definition to OpenAI function calling format.

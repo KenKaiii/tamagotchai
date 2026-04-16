@@ -10,6 +10,7 @@ struct PermissionsView: View {
     @State private var appManagementGranted = false
     @State private var notificationsGranted = false
     @State private var documentsFolderGranted = false
+    @State private var screenRecordingGranted = false
     @State private var permissionPollTimer: Timer?
     @State private var axObserver: NSObjectProtocol?
 
@@ -115,6 +116,29 @@ struct PermissionsView: View {
                     granted: appManagementGranted,
                     action: {
                         checker.openAppManagementSettings()
+                    }
+                )
+
+                Divider().opacity(0.3).padding(.horizontal, 14)
+
+                permissionRow(
+                    title: "Screen Recording",
+                    description: "Required for the screenshot tool to capture your screen.",
+                    granted: screenRecordingGranted,
+                    action: {
+                        if screenRecordingGranted {
+                            checker.openScreenRecordingSettings()
+                        } else {
+                            // First call triggers the system prompt; subsequent calls
+                            // are no-ops, so also open Settings as a fallback path.
+                            _ = checker.requestScreenRecording()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                screenRecordingGranted = checker.isScreenRecordingGranted()
+                                if !screenRecordingGranted {
+                                    checker.openScreenRecordingSettings()
+                                }
+                            }
+                        }
                     }
                 )
 
@@ -254,6 +278,7 @@ struct PermissionsView: View {
         speechGranted = checker.isSpeechRecognitionGranted()
         appManagementGranted = checker.isAppManagementGranted()
         notificationsGranted = checker.isNotificationsGranted()
+        screenRecordingGranted = checker.isScreenRecordingGranted()
     }
 
     private func permissionRow(

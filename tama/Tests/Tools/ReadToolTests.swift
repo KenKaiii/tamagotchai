@@ -27,7 +27,7 @@ struct ReadToolTests {
     @Test("reads a normal file with numbered lines")
     func readNormalFile() async throws {
         try writeFile("test.txt", content: "line one\nline two\nline three\n")
-        let result = try await tool.execute(args: ["file_path": "test.txt"])
+        let result = try await tool.execute(args: ["file_path": "test.txt"]).text
         #expect(result.contains("1\tline one"))
         #expect(result.contains("2\tline two"))
         #expect(result.contains("3\tline three"))
@@ -37,7 +37,7 @@ struct ReadToolTests {
     @Test("reads with offset parameter")
     func readWithOffset() async throws {
         try writeFile("offset.txt", content: "a\nb\nc\nd\ne\n")
-        let result = try await tool.execute(args: ["file_path": "offset.txt", "offset": 3])
+        let result = try await tool.execute(args: ["file_path": "offset.txt", "offset": 3]).text
         #expect(!result.contains("1\ta"))
         #expect(!result.contains("2\tb"))
         #expect(result.contains("3\tc"))
@@ -49,7 +49,7 @@ struct ReadToolTests {
     @Test("reads with limit parameter")
     func readWithLimit() async throws {
         try writeFile("limit.txt", content: "a\nb\nc\nd\ne\n")
-        let result = try await tool.execute(args: ["file_path": "limit.txt", "limit": 2])
+        let result = try await tool.execute(args: ["file_path": "limit.txt", "limit": 2]).text
         #expect(result.contains("1\ta"))
         #expect(result.contains("2\tb"))
         #expect(!result.contains("3\tc"))
@@ -59,7 +59,7 @@ struct ReadToolTests {
     @Test("reads with offset and limit")
     func readWithOffsetAndLimit() async throws {
         try writeFile("both.txt", content: "a\nb\nc\nd\ne\n")
-        let result = try await tool.execute(args: ["file_path": "both.txt", "offset": 2, "limit": 2])
+        let result = try await tool.execute(args: ["file_path": "both.txt", "offset": 2, "limit": 2]).text
         #expect(!result.contains("1\ta"))
         #expect(result.contains("2\tb"))
         #expect(result.contains("3\tc"))
@@ -70,7 +70,7 @@ struct ReadToolTests {
     @Test("detects binary file by extension")
     func detectBinaryFile() async throws {
         try writeFile("image.jpg", content: "not really an image")
-        let result = try await tool.execute(args: ["file_path": "image.jpg"])
+        let result = try await tool.execute(args: ["file_path": "image.jpg"]).text
         #expect(result.contains("Binary file detected"))
         cleanup()
     }
@@ -99,7 +99,7 @@ struct ReadToolTests {
     @Test("handles file without trailing newline")
     func fileWithoutTrailingNewline() async throws {
         try writeFile("notail.txt", content: "only line")
-        let result = try await tool.execute(args: ["file_path": "notail.txt"])
+        let result = try await tool.execute(args: ["file_path": "notail.txt"]).text
         #expect(result.contains("1\tonly line"))
         cleanup()
     }

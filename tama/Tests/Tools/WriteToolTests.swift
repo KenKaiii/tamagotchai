@@ -19,7 +19,7 @@ struct WriteToolTests {
 
     @Test("writes new file with correct content")
     func writeNewFile() async throws {
-        let result = try await tool.execute(args: ["file_path": "hello.txt", "content": "Hello, world!"])
+        let result = try await tool.execute(args: ["file_path": "hello.txt", "content": "Hello, world!"]).text
         #expect(result.contains("Wrote"))
         let written = try String(
             contentsOfFile: (tempDir as NSString).appendingPathComponent("hello.txt"),
@@ -31,7 +31,7 @@ struct WriteToolTests {
 
     @Test("creates parent directories")
     func createParentDirs() async throws {
-        let result = try await tool.execute(args: ["file_path": "a/b/c/deep.txt", "content": "deep content"])
+        let result = try await tool.execute(args: ["file_path": "a/b/c/deep.txt", "content": "deep content"]).text
         #expect(result.contains("Wrote"))
         let path = (tempDir as NSString).appendingPathComponent("a/b/c/deep.txt")
         #expect(FileManager.default.fileExists(atPath: path))

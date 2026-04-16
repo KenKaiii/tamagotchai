@@ -128,6 +128,8 @@ final class ToolIndicatorView: NSView {
             return query.isEmpty ? "Searching the web…" : "Searching  \(query)"
         case "browser":
             return browserDisplayName(args: args)
+        case "screenshot":
+            return "Taking screenshot…"
         case "create_reminder", "create_routine", "list_schedules", "delete_schedule":
             return schedulingDisplayName(toolName, args: args)
         case "task":

@@ -15,14 +15,38 @@ private let logger = Logger(
 final class ScreenshotTool: AgentTool {
     let name = "screenshot"
     let description = """
-    Capture a screenshot of the user's screen and attach it for analysis. The image is saved to \
-    ~/Documents/Tama/Screenshots/ and sent to the model so you can visually see what's on the screen. \
-    Use this when the user asks about what they're looking at, to diagnose UI issues, read text from \
-    windows, or verify visual state.
+    Capture the user's screen and attach the image to your context so you can literally see what \
+    they're looking at. Saves to ~/Documents/Tama/Screenshots/.
+
+    ## When to use this tool (call it proactively, don't wait to be asked)
+
+    - The user mentions anything visible: "this error", "this window", "what I'm looking at", \
+      "this page", "my screen".
+    - "Where's X?" / "how do I X?" / "I can't find X" — capture first, then use `point` to show them.
+    - UI bugs, layout issues, rendering problems.
+    - Reading text that's on-screen (error dialogs, form fields, menu labels).
+    - Before giving step-by-step GUI instructions — see what's actually open.
+
+    ## Pair with `point`
+
+    When the user asks WHERE something is or HOW to click through something, the full pattern is \
+    screenshot → analyze → `point` at the target while narrating aloud. Don't just describe a \
+    location in words; guide their eyes with the virtual cursor.
+
+    ## When NOT to use
+
+    - Pure knowledge questions ("what year did X happen?").
+    - When you already took a screenshot this turn and the screen hasn't changed.
+    - If the active model can't see images the tool returns an error — relay it verbatim and stop.
     """
 
-    /// Cap output width at 1920px to keep base64 payload small and token cost sane.
-    private static let maxWidth = 1920
+    /// Cap output width at 2560px. Higher than the old 1920 cap so menu-bar
+    /// icons and toolbar buttons (~24pt / 48 native px) remain distinguishable
+    /// after downscale — at 1920 wide on a 14" retina MBP each icon was only
+    /// ~15px, which confused vision models trying to pick the right one. The
+    /// extra pixels cost ~2k more vision tokens per shot (negligible in practice)
+    /// but meaningfully improve pointing accuracy for `point`.
+    private static let maxWidth = 2560
     /// JPEG default quality (0-100).
     private static let defaultJPEGQuality = 85
 
@@ -185,12 +209,23 @@ final class ScreenshotTool: AgentTool {
 
         let width = downscaled.width
         let height = downscaled.height
-        logger
-            .info(
-                "Screenshot captured: \(width)x\(height), \(imageData.count) bytes, saved to \(filePath, privacy: .public)"
-            )
+        let nativeWidth = cgImage.width
+        let nativeHeight = cgImage.height
+        let summary = "Screenshot captured: \(width)x\(height) " +
+            "(native \(nativeWidth)x\(nativeHeight)), \(imageData.count) bytes"
+        logger.info("\(summary, privacy: .public), saved to \(filePath, privacy: .public)")
 
-        let text = "Screenshot saved to \(filePath) (\(width)×\(height), \(imageData.count) bytes)"
+        // Include both processed (what the model sees) and native (what the
+        // screen actually is) dimensions so the agent can reason about scale
+        // when estimating small-target coordinates. Normalized fractions [0-1]
+        // apply identically to both, so `point` works regardless of which
+        // resolution the model reasons from.
+        let scaleNote = nativeWidth == width
+            ? ""
+            : " — downscaled from \(nativeWidth)×\(nativeHeight) native pixels"
+        let text = "Screenshot saved to \(filePath) " +
+            "(\(width)×\(height)\(scaleNote), \(imageData.count) bytes). " +
+            "Coords for `point` are fractions of this image: (0,0) = top-left, (1,1) = bottom-right."
         return ToolOutput(
             text: text,
             images: [ToolImage(mediaType: mediaType, data: imageData)]

@@ -43,7 +43,7 @@ struct RealScreenshotTests {
             "role": "user",
             "content":
                 "Take a screenshot of my screen with the screenshot tool, then describe what you see "
-                    + "in one short sentence. Keep it under 25 words.",
+                + "in one short sentence. Keep it under 25 words.",
         ]
 
         let conversation = try await loop.run(

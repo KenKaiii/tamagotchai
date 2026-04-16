@@ -97,6 +97,7 @@ final class ToolRegistry: Sendable {
             DismissTool(),
             BrowserTool(),
             ScreenshotTool(),
+            PointTool(),
             SkillTool(),
         ])
     }
@@ -122,6 +123,7 @@ final class ToolRegistry: Sendable {
             EndCallTool(),
             BrowserTool(),
             ScreenshotTool(),
+            PointTool(),
             SkillTool(),
         ])
     }

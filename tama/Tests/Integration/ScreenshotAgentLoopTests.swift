@@ -201,16 +201,15 @@ struct ScreenshotAgentLoopTests {
         guard let token = GGAuthBridge.accessToken(for: provider) else {
             throw VisionIntegrationError.missingCredentials(provider)
         }
-        let cred: ProviderCredential
-        if provider.usesOAuth {
-            cred = ProviderCredential(
+        let cred = if provider.usesOAuth {
+            ProviderCredential(
                 accessToken: token,
                 refreshToken: nil,
                 expiresAt: nil,
                 accountId: GGAuthBridge.accountId(for: provider) ?? ""
             )
         } else {
-            cred = ProviderCredential.apiKey(token)
+            ProviderCredential.apiKey(token)
         }
         ProviderStore.shared.setCredential(cred, for: provider)
     }

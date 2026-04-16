@@ -130,6 +130,8 @@ final class ToolIndicatorView: NSView {
             return browserDisplayName(args: args)
         case "screenshot":
             return "Taking screenshot…"
+        case "point":
+            return pointDisplayName(args: args)
         case "create_reminder", "create_routine", "list_schedules", "delete_schedule":
             return schedulingDisplayName(toolName, args: args)
         case "task":
@@ -140,6 +142,15 @@ final class ToolIndicatorView: NSView {
         default:
             return "Working…"
         }
+    }
+
+    // MARK: - Point Action
+
+    private static func pointDisplayName(args: [String: String]) -> String {
+        if let label = compactOrNil(args["label"], max: 28) {
+            return "Pointing  \(label)"
+        }
+        return "Pointing…"
     }
 
     // MARK: - Scheduling Actions
@@ -202,6 +213,13 @@ final class ToolIndicatorView: NSView {
         let cleaned = value.components(separatedBy: .newlines).first ?? value
         if cleaned.count <= max { return cleaned }
         return String(cleaned.prefix(max - 1)) + "…"
+    }
+
+    /// Same as `compact` but returns `nil` for empty values so callers can
+    /// distinguish "no label" from "empty label".
+    private static func compactOrNil(_ value: String?, max: Int) -> String? {
+        let trimmed = compact(value, max: max)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Returns the last path component, or nil if empty.

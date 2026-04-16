@@ -22,3 +22,8 @@ Package.resolved
 # IDE
 .idea/
 .vscode/
+
+# Local agent/assistant workspace (plans, commands, scratch) — per-developer
+.gg/
+.claude/
+

@@ -17,40 +17,9 @@ struct AgentDismissError: Error {
     let conversation: [[String: Any]]
 }
 
-/// Matches a sentence/clause boundary followed by whitespace OR end of string.
-/// Used to anchor visual-tool barriers to the boundary BEFORE the tool's
-/// introducing phrase, so cursors appear as that phrase starts being spoken
-/// instead of after the model finishes describing the target.
-///
-/// Includes colons because models frequently use label syntax in
-/// walkthroughs ("Apple menu:", "Brave browser:") — those are functionally
-/// sentence-like separators. Without colons, multi-item responses stall all
-/// barriers at the last period and cursors fire at round-trip speed instead
-/// of at narration cadence. Matches TTS's own clause-boundary pattern.
-// swiftlint:disable:next force_try
-private let sentenceBoundaryPattern = try! NSRegularExpression(
-    pattern: "[.!?:](?=\\s|$)",
-    options: []
-)
-
 /// Runs the tool execution loop: send → tool_use → execute → tool_result → repeat.
 @MainActor
 final class AgentLoop {
-    /// Tools that visually annotate the screen while the agent speaks. Each
-    /// one must fire at the moment its matching narration reaches the user's
-    /// ears — not when the LLM emits the tool_use block (which happens in
-    /// milliseconds). Gated on `SpeechService.awaitSpokenChars` during voice
-    /// calls; no-op outside of them.
-    static let voiceSyncToolNames: Set<String> = [
-        "point",
-        "highlight",
-        "arrow",
-        "emphasize",
-        "countdown",
-        "scroll_hint",
-        "show_shortcut",
-    ]
-
     private let claude = ClaudeService.shared
     private let registry: ToolRegistry
     private let maxTurns: Int
@@ -71,30 +40,22 @@ final class AgentLoop {
     }
 
     /// Run the agent loop with a conversation, streaming events back.
+    ///
+    /// `useBasePrompt` controls whether the global `baseSystemPrompt` is
+    /// prepended. Default `true` for the chat panel. The voice call agent
+    /// passes `false` so its self-contained call prompt isn't diluted by
+    /// the chat-shaped base prompt (and its "I did X — want Y too?" pattern
+    /// that conflicts with the chat-shaped prompt's follow-up rule).
     func run(
         messages: [[String: Any]],
         systemPrompt: String? = nil,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (AgentEvent) -> Void
     ) async throws -> [[String: Any]] {
         var conversation = messages
         let tools = registry.apiToolDefinitions()
         var accumulatedText = ""
-
-        // Per-run state for voice/visual sync. `cumulativeInputChars` mirrors
-        // the chars fed into `SpeechService.feedChunk` (same source — text
-        // deltas). `lastSentenceBoundaryChars` tracks the cumulative-char
-        // position of the most recent sentence-ending punctuation. When a
-        // tool_use block starts, we snapshot the sentence boundary as the
-        // tool's barrier (NOT the tool's exact stream position) — so the
-        // visual fires when the sentence INTRODUCING it starts being spoken,
-        // not after the model finishes describing it. Models tend to emit
-        // tool_use at the END of a description paragraph; without this
-        // anchoring, cursors appear after the explanation has already played.
-        // State persists across turns within a single run.
-        nonisolated(unsafe) var cumulativeInputChars = 0
-        nonisolated(unsafe) var lastSentenceBoundaryChars = 0
-        nonisolated(unsafe) var toolBarriers: [String: Int] = [:]
 
         for turn in 0 ..< maxTurns {
             try Task.checkCancellation()
@@ -109,41 +70,17 @@ final class AgentLoop {
                     messages: conversation,
                     tools: tools,
                     systemPrompt: systemPrompt,
+                    useBasePrompt: useBasePrompt,
                     maxTokens: maxTokens,
                     onEvent: { event in
                         if case let .textDelta(text) = event {
-                            // Stream text deltas immediately for smooth UI typing animation.
-                            // Previously these were buffered until a tool call, which caused
-                            // non-tool responses (especially voice) to appear all at once.
                             if firstDeltaAt == nil {
                                 firstDeltaAt = CFAbsoluteTimeGetCurrent()
                             }
                             deltaCount += 1
-                            let deltaStartPos = cumulativeInputChars
-                            cumulativeInputChars += text.count
-                            // Scan this delta for sentence-ending punctuation
-                            // and record the latest boundary position. Used
-                            // below when a tool_use fires — barrier is set to
-                            // the LAST sentence boundary, not the tool's
-                            // exact stream position, so cursors appear at the
-                            // start of the introducing sentence.
-                            let nsText = text as NSString
-                            let range = NSRange(location: 0, length: nsText.length)
-                            for match in sentenceBoundaryPattern.matches(in: text, range: range) {
-                                let boundaryEnd = deltaStartPos + match.range.location + match.range.length
-                                if boundaryEnd > lastSentenceBoundaryChars {
-                                    lastSentenceBoundaryChars = boundaryEnd
-                                }
-                            }
                             onEvent(.textDelta(text))
                         }
                         if case let .toolUseStart(id, name) = event {
-                            // Anchor the barrier to the last sentence
-                            // boundary BEFORE this tool — cursor fires as the
-                            // introducing sentence begins, not after the
-                            // model finishes describing the target. See the
-                            // detailed comment above the state declarations.
-                            toolBarriers[id] = lastSentenceBoundaryChars
                             if name != "dismiss" {
                                 onEvent(.toolStart(name: name, id: id))
                             }
@@ -216,7 +153,6 @@ final class AgentLoop {
             try Task.checkCancellation()
             let toolResults = await executeTools(
                 toolCalls,
-                barriers: toolBarriers,
                 onEvent: onEvent
             )
 
@@ -234,14 +170,6 @@ final class AgentLoop {
         )
         onEvent(.turnComplete(text: accumulatedText))
         return conversation
-    }
-
-    /// Extracts the user-visible label for a visual tool from its args.
-    /// All visual tools use `label`; fall back to the tool name as a last
-    /// resort so we still match *something* in narration for word-level sync.
-    private static func labelForVisualTool(args: [String: Any], fallback: String) -> String {
-        if let label = args["label"] as? String, !label.isEmpty { return label }
-        return fallback
     }
 
     // MARK: - Private Helpers
@@ -266,7 +194,6 @@ final class AgentLoop {
 
     private func executeTools(
         _ toolCalls: [(id: String, name: String, input: [String: Any])],
-        barriers: [String: Int],
         onEvent: @escaping @Sendable (AgentEvent) -> Void
     ) async -> [[String: Any]] {
         var results: [[String: Any]] = []
@@ -276,75 +203,8 @@ final class AgentLoop {
             let toolOutput: ToolOutput
             nonisolated(unsafe) let args = call.input
 
-            // Coerce args once — used both after the barrier awaits below and
-            // potentially in pre-wait logging.
             let stringArgs = args.reduce(into: [String: String]()) { result, pair in
                 result[pair.key] = "\(pair.value)"
-            }
-
-            // Word-level voice/visual sync: visual tools (point, highlight,
-            // arrow, etc.) register with `SpeechService.registerPendingVisual`
-            // using their `label` / `description` arg. When Kokoro's per-word
-            // timings surface that word in subsequent narration, the actual
-            // cursor fires at the EXACT moment the word is uttered.
-            //
-            // This decouples cursor timing from the model's tool_use stream
-            // position — so whether Claude narrates-then-batches-tools or
-            // batches-tools-then-narrates (it does both), cursors land when
-            // the user actually hears the word. If the label never appears
-            // in narration, a safety net in `completeStream` fires all
-            // unmatched visuals at end-of-stream.
-            //
-            // The agent loop returns a synthetic tool_result immediately
-            // so the model can keep streaming without blocking on playback.
-            if Self.voiceSyncToolNames.contains(call.name),
-               await SpeechService.shared.isVoiceSessionActive,
-               let tool = registry.tool(named: call.name)
-            {
-                let label = Self.labelForVisualTool(args: args, fallback: call.name)
-                let toolName = call.name
-                let toolId = call.id
-                let argsCapture = args
-                logger.info("Voice sync: registering \(toolName) for word '\(label)'")
-                SpeechService.shared.registerPendingVisual(id: toolId, label: label) {
-                    Task { @MainActor in
-                        let startTime = CFAbsoluteTimeGetCurrent()
-                        do {
-                            let output = try await tool.execute(args: argsCapture)
-                            let ms = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
-                            let logger = Logger(subsystem: "com.unstablemind.tama", category: "agent")
-                            logger
-                                .info(
-                                    "Voice sync fired: \(toolName) — \(output.text.count) chars, \(ms)ms"
-                                )
-                        } catch {
-                            let logger = Logger(subsystem: "com.unstablemind.tama", category: "agent")
-                            logger.error("Voice sync fire failed: \(toolName) — \(error.localizedDescription)")
-                        }
-                    }
-                }
-                onEvent(.toolRunning(name: call.name, args: stringArgs))
-                let synthetic = "Visual '\(label)' queued — cursor fires when you say the word."
-                onEvent(.toolResult(name: call.name, output: synthetic))
-                results.append([
-                    "type": "tool_result",
-                    "tool_use_id": call.id,
-                    "content": synthetic,
-                ])
-                continue
-            }
-
-            // Non-voice-sync path (panel mode, non-visual tools, or visual
-            // tools outside a call): execute immediately and report result.
-            // Barriers still supported for anyone awaiting `awaitSpokenChars`.
-            if Self.voiceSyncToolNames.contains(call.name),
-               let barrier = barriers[call.id]
-            {
-                let waitStart = CFAbsoluteTimeGetCurrent()
-                logger.info("Voice sync fallback: \(call.name) awaiting TTS barrier \(barrier)")
-                await SpeechService.shared.awaitSpokenChars(barrier)
-                let waitedMs = Int((CFAbsoluteTimeGetCurrent() - waitStart) * 1000)
-                logger.info("Voice sync fallback: \(call.name) barrier \(barrier) met after \(waitedMs)ms")
             }
 
             onEvent(.toolRunning(name: call.name, args: stringArgs))

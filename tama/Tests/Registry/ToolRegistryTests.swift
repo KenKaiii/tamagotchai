@@ -4,23 +4,25 @@ import Testing
 
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
-    @Test("defaultRegistry creates all 26 tools")
+    /// Names of every tool the default (chat-panel) registry must expose.
+    /// Keep in sync with `ToolRegistry.defaultRegistry`.
+    private static let expectedDefaultNames: [String] = [
+        "bash", "read", "write", "edit", "ls", "find", "grep",
+        "web_fetch", "web_search",
+        "create_reminder", "create_routine", "list_schedules", "delete_schedule",
+        "task", "dismiss", "browser", "screenshot", "skill",
+    ]
+
+    @Test("defaultRegistry creates the expected tool set")
     func defaultRegistryHasAllTools() {
         let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
-        #expect(registry.tools.count == 26)
+        #expect(registry.tools.count == Self.expectedDefaultNames.count)
     }
 
     @Test("tool(named:) returns correct tool")
     func toolNamedReturnsCorrectTool() {
         let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
-        let expectedNames = [
-            "bash", "read", "write", "edit", "ls", "find", "grep", "web_fetch", "web_search",
-            "create_reminder", "create_routine", "list_schedules", "delete_schedule",
-            "task", "dismiss", "browser", "screenshot", "point", "emphasize",
-            "highlight", "arrow", "countdown", "scroll_hint", "show_shortcut",
-            "skill",
-        ]
-        for name in expectedNames {
+        for name in Self.expectedDefaultNames {
             let tool = registry.tool(named: name)
             #expect(tool != nil, "Expected tool named '\(name)' to exist")
             #expect(tool?.name == name)
@@ -37,7 +39,7 @@ struct ToolRegistryTests {
     func apiToolDefinitionsShape() {
         let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
         let definitions = registry.apiToolDefinitions()
-        #expect(definitions.count == 25)
+        #expect(definitions.count == Self.expectedDefaultNames.count)
 
         for def in definitions {
             #expect(def["name"] is String, "Each definition must have a 'name' string")
@@ -75,28 +77,6 @@ struct ToolRegistryTests {
         #expect(registry.tool(named: "screenshot") != nil)
     }
 
-    @Test("callRegistry has point tool so the voice agent can guide the user visually")
-    func callRegistryHasPoint() {
-        let registry = ToolRegistry.callRegistry(workingDirectory: NSTemporaryDirectory())
-        #expect(registry.tool(named: "point") != nil)
-    }
-
-    @Test("callRegistry exposes every new tutor tool")
-    func callRegistryHasTutorTools() {
-        let registry = ToolRegistry.callRegistry(workingDirectory: NSTemporaryDirectory())
-        for name in ["highlight", "arrow", "countdown", "scroll_hint", "show_shortcut"] {
-            #expect(registry.tool(named: name) != nil, "Call registry missing tutor tool '\(name)'")
-        }
-    }
-
-    @Test("defaultRegistry exposes every new tutor tool")
-    func defaultRegistryHasTutorTools() {
-        let registry = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
-        for name in ["highlight", "arrow", "countdown", "scroll_hint", "show_shortcut"] {
-            #expect(registry.tool(named: name) != nil, "Default registry missing tutor tool '\(name)'")
-        }
-    }
-
     @Test("callRegistry swaps `dismiss` for `end_call` but keeps every other tool")
     func callRegistryDifferences() {
         let defaults = ToolRegistry.defaultRegistry(workingDirectory: NSTemporaryDirectory())
@@ -123,37 +103,5 @@ struct ToolRegistryTests {
             prompt.contains("file path") || prompt.contains("byte"),
             "Call prompt should instruct the agent to skip path/bytes when speaking"
         )
-    }
-
-    @Test("callSystemPrompt teaches the see-point-explain pattern with trigger phrases")
-    @MainActor
-    func callPromptTeachesSeePointExplain() {
-        // The voice agent's main value-add is visual guidance. The prompt must
-        // both enumerate the natural trigger phrases the user says, AND instruct
-        // the agent to start the screenshot → point loop without being explicitly
-        // asked. Asserting the prompt structure here prevents future edits from
-        // quietly regressing the UX back to "take a screenshot and point at X".
-        let prompt = buildCallSystemPrompt().lowercased()
-        #expect(prompt.contains("point"), "Call prompt must name the point tool")
-        #expect(prompt.contains("where"), "Call prompt must list 'where's X' as a trigger")
-        #expect(prompt.contains("how do i"), "Call prompt must list 'how do I X' as a trigger")
-        #expect(
-            prompt.contains("don't wait") || prompt.contains("proactively") || prompt.contains("just do it"),
-            "Call prompt must push the agent to invoke the pattern without being asked"
-        )
-        #expect(
-            prompt.contains("narrate") || prompt.contains("say") || prompt.contains("out loud"),
-            "Call prompt must instruct the agent to narrate while pointing"
-        )
-    }
-
-    @Test("baseSystemPrompt teaches the see-point-explain pattern with trigger phrases")
-    func basePromptTeachesSeePointExplain() {
-        // Same coverage for the chat-panel prompt — text chats also benefit from
-        // pointing when the user is in front of their screen.
-        let prompt = baseSystemPrompt.lowercased()
-        #expect(prompt.contains("point"), "Base prompt must name the point tool")
-        #expect(prompt.contains("where"), "Base prompt must list 'where's X' as a trigger")
-        #expect(prompt.contains("how do i"), "Base prompt must list 'how do I X' as a trigger")
     }
 }

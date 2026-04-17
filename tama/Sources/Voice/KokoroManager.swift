@@ -408,9 +408,7 @@ final class KokoroManager: ObservableObject {
 
     /// Generates audio off the main thread using a captured context. Thread-safe.
     /// Returns both the buffer AND the per-word timings; callers that only
-    /// need audio can ignore `wordTimings`. Timings drive voice/visual sync
-    /// — see `SpeechService.registerPendingVisual` for how the cursor
-    /// firing pipeline consumes them.
+    /// need audio can ignore `wordTimings`.
     nonisolated static func generateAudioBufferOffMain(
         text: String,
         context: GenerationContext

@@ -97,13 +97,6 @@ final class ToolRegistry: Sendable {
             DismissTool(),
             BrowserTool(),
             ScreenshotTool(),
-            PointTool(),
-            EmphasizeTool(),
-            HighlightTool(),
-            ArrowTool(),
-            CountdownTool(),
-            ScrollHintTool(),
-            ShowShortcutTool(),
             SkillTool(),
         ])
     }
@@ -129,13 +122,6 @@ final class ToolRegistry: Sendable {
             EndCallTool(),
             BrowserTool(),
             ScreenshotTool(),
-            PointTool(),
-            EmphasizeTool(),
-            HighlightTool(),
-            ArrowTool(),
-            CountdownTool(),
-            ScrollHintTool(),
-            ShowShortcutTool(),
             SkillTool(),
         ])
     }

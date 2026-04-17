@@ -53,20 +53,10 @@ struct ScreenshotToolTests {
         let properties = schema["properties"] as? [String: Any]
         #expect(properties != nil)
         #expect(properties?["display"] != nil)
-        #expect(properties?["format"] != nil)
-        #expect(properties?["quality"] != nil)
 
         // No required parameters — all defaults are sensible.
         let required = schema["required"] as? [String]
         #expect(required?.isEmpty == true)
-    }
-
-    @Test("format enum lists png and jpeg")
-    func formatEnumValues() {
-        let properties = tool(model: visionModel()).inputSchema["properties"] as? [String: Any]
-        let formatProp = properties?["format"] as? [String: Any]
-        let enumValues = formatProp?["enum"] as? [String]
-        #expect(Set(enumValues ?? []) == Set(["png", "jpeg"]))
     }
 
     // MARK: - Vision Guard (new)

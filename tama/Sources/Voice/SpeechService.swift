@@ -60,88 +60,6 @@ final class SpeechService {
     private var nextSlotIndex = 0
     private var nextPlaySlot = 0
 
-    // MARK: - Spoken-Chars Barrier (voice ↔ visual sync)
-
-    /// Cumulative count of input characters fed into `feedChunk` since the
-    /// current streaming session began. Drives the voice/visual sync barrier
-    /// together with `inputCharsSpoken` below.
-    private var inputCharsFed = 0
-
-    /// Cumulative count of input characters whose audio has actually finished
-    /// playing through `AVAudioPlayerNode`. Monotonically increasing within a
-    /// streaming session; advanced each time a scheduled buffer reports
-    /// completion. Visual tools (point, highlight, etc.) wait on this to stay
-    /// synchronized with the agent's narration — see `awaitSpokenChars`.
-    private var inputCharsSpoken = 0
-
-    /// Watermark per slot — the value of `inputCharsFed` captured at the
-    /// moment the utterance was enqueued. When the slot's buffer finishes
-    /// playing, `inputCharsSpoken` is advanced to this watermark.
-    private var slotWatermarks: [Int: Int] = [:]
-
-    /// Watermark of the buffer currently being played (popped from
-    /// `bufferQueue`). Used to advance `inputCharsSpoken` on completion.
-    private var playingBufferWatermark: Int = 0
-
-    /// Watermarks parallel to `bufferQueue` — `bufferQueue[i]` is played with
-    /// watermark `bufferQueueWatermarks[i]`.
-    private var bufferQueueWatermarks: [Int] = []
-
-    /// Suspended callers waiting for `inputCharsSpoken` to reach their target.
-    /// Resumed whenever a buffer completes and advances the counter past their
-    /// target, or when the stream stops (to avoid deadlocking tool execution).
-    private var barrierWaiters: [(target: Int, continuation: CheckedContinuation<Void, Never>)] = []
-
-    /// Word-level visual sync: callers register a visual action keyed by a
-    /// SHORT LABEL (e.g. "Apple", "Wi-Fi", "Finder"). When the TTS stream
-    /// enqueues a buffer whose Kokoro word timings include that label, the
-    /// action is scheduled via `DispatchQueue.main.asyncAfter` to fire at
-    /// the EXACT moment that word begins being uttered. Matches the pattern
-    /// used by Web Speech API (`onboundary.charIndex`) and OpenAI Realtime
-    /// (`response.audio_transcript.delta` + interleaved function calls).
-    ///
-    /// Unlike `barrierWaiters` (which suspend an async task), these are
-    /// fire-and-forget — the agent loop registers and returns tool_result
-    /// instantly so the model can keep streaming the narration that drives
-    /// the firing.
-    private struct PendingVisual {
-        let id: String
-        /// All significant (non-stopword) tokens from the visual's label,
-        /// lowercased and stripped of punctuation. For label "the File
-        /// menu" this is ["file", "menu"]; for "Wi-Fi" it's ["wi", "fi"].
-        /// The FIRST entry is the primary match anchor; subsequent entries
-        /// are tried as fallbacks if the primary doesn't appear in
-        /// narration. Empty only when the label is purely stopwords,
-        /// which we refuse at registration time.
-        let tokens: [String]
-        /// Full lowercased label preserved for substring fallbacks and
-        /// for logging. Punctuation preserved so "wi-fi" still matches a
-        /// Kokoro-tokenised "wi-fi" unit via `contains`.
-        let fullLabel: String
-        let action: @MainActor () -> Void
-        let registeredAt: Date
-    }
-
-    /// Common English stopwords skipped when picking a visual's primary
-    /// match token. Without this, a label like "the Apple menu" would
-    /// anchor on "the" and fire the cursor on the FIRST "the" uttered in
-    /// narration — usually the wrong moment entirely. The list is narrow
-    /// on purpose: only true semantic-free words that never name a UI
-    /// target. Kept as a private static set so the allocator hits it once.
-    private static let matchStopwords: Set<String> = [
-        "the", "a", "an", "this", "that", "these", "those", "it", "its",
-        "your", "my", "our", "their", "his", "her",
-        "is", "was", "are", "were", "be", "been", "being",
-        "and", "or", "but", "of", "to", "for", "in", "on", "at", "by",
-        "with", "from",
-    ]
-
-    private var pendingVisuals: [PendingVisual] = []
-
-    /// Current cumulative spoken chars — exposed for callers that need to
-    /// compute spacing relative to the latest playback position.
-    var spokenCharsSnapshot: Int { inputCharsSpoken }
-
     /// Timer that auto-flushes buffered text when no new chunks arrive for `flushDelay`.
     /// Tokens arrive every ~20-50ms, so the timer only fires during genuine pauses
     /// (between sentences, before tool calls, or at end of response).
@@ -241,12 +159,6 @@ final class SpeechService {
         nextSlotIndex = 0
         nextPlaySlot = 0
         orderedSlots.removeAll()
-        inputCharsFed = 0
-        inputCharsSpoken = 0
-        slotWatermarks.removeAll()
-        playingBufferWatermark = 0
-        bufferQueueWatermarks.removeAll()
-        pendingVisuals.removeAll()
         firstChunkEnqueuedFired = false
         firstAudioReadyFired = false
         firstAudioPlaybackFired = false
@@ -265,9 +177,6 @@ final class SpeechService {
     ///    last partial sentence before a tool call or end of response).
     func feedChunk(_ chunk: String) {
         guard isStreaming else { return }
-        // Count raw input chars BEFORE any stripping/drainage so the barrier
-        // aligns 1:1 with the agent loop's own cumulative textDelta count.
-        inputCharsFed += chunk.count
         streamBuffer += chunk
 
         if !hasFlushedFirst {
@@ -277,239 +186,6 @@ final class SpeechService {
         }
 
         scheduleFlush()
-    }
-
-    // MARK: - Spoken-Chars Barrier
-
-    /// Suspends the caller until `target` input characters have finished
-    /// playing through the audio engine, or the stream ends. Used by visual
-    /// tools (point, highlight, arrow, emphasize, countdown, scroll_hint,
-    /// show_shortcut) to fire at the exact moment their narration reaches
-    /// the user's ears instead of racing ahead.
-    ///
-    /// Returns immediately when:
-    /// - `target` has already been spoken (counter caught up / past it), or
-    /// - no streaming session is active (panel mode with no TTS), or
-    /// - the stream is stopped while waiting (caller resumes, tool proceeds).
-    func awaitSpokenChars(_ target: Int) async {
-        if target <= inputCharsSpoken {
-            let spokenNow = inputCharsSpoken
-            logger.info("barrier: target \(target) already spoken (=\(spokenNow)) — returning immediately")
-            return
-        }
-        if !isStreaming {
-            logger.info("barrier: target \(target) but not streaming — returning immediately")
-            return
-        }
-        // Force-drain any residual text in the stream buffer. Without this,
-        // short tail fragments (<20 chars) arriving between a toolStart and
-        // the stream's end are held back by `flushBuffer`'s fragment-skip
-        // guard — they count toward `inputCharsFed` but never get enqueued,
-        // so `inputCharsSpoken` can never reach `target` and the barrier
-        // would hang forever. See the 169/153 stall investigated in logs.
-        forceDrainBuffer()
-        if target <= inputCharsSpoken { return }
-        let fedNow = inputCharsFed
-        let spokenNow = inputCharsSpoken
-        let queuedNow = bufferQueue.count
-        let playingNow = isPlaying
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            barrierWaiters.append((target: target, continuation: cont))
-            logger
-                .info(
-                    "barrier: suspending for \(target) chars (fed=\(fedNow), spoken=\(spokenNow), queued=\(queuedNow), playing=\(playingNow))"
-                )
-        }
-    }
-
-    /// Forcibly enqueues whatever is in `streamBuffer`, bypassing the
-    /// `minFragmentLength` guard that `flushBuffer` applies for smoothness.
-    /// Used by the barrier path where short trailing fragments MUST reach the
-    /// TTS queue so their chars are eventually counted as spoken.
-    private func forceDrainBuffer() {
-        guard isStreaming else { return }
-        let text = stripMarkdown(streamBuffer).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        logger.info("forceDrainBuffer — text: \(text.prefix(80), privacy: .public)")
-        streamBuffer = ""
-        enqueueSentences(from: text)
-    }
-
-    /// Advances `inputCharsSpoken` to at least `watermark` and resumes every
-    /// barrier waiter whose target is now satisfied. Called from the audio
-    /// engine's buffer-completion callback (main actor).
-    private func advanceSpokenChars(to watermark: Int) {
-        guard watermark > inputCharsSpoken else { return }
-        let previous = inputCharsSpoken
-        inputCharsSpoken = watermark
-        let waiterCount = barrierWaiters.count
-        logger.info("barrier: advanced spoken \(previous) → \(watermark) (waiters=\(waiterCount))")
-        resumeReadyWaiters()
-    }
-
-    // MARK: - Word-Level Visual Scheduling
-
-    /// Register a visual action to fire the instant TTS utters `label`.
-    /// Matching is case-insensitive and checks the FIRST word of `label`
-    /// against Kokoro's per-word tokens. If the label is already in an
-    /// already-enqueued buffer, the action is scheduled at the buffer's
-    /// matching-word offset. If no match is found in any currently-known
-    /// buffer, the visual stays pending — every subsequently enqueued
-    /// buffer is scanned, and any lingering pending visuals are
-    /// force-fired on stream completion as a safety net.
-    func registerPendingVisual(id: String, label: String, action: @escaping @MainActor () -> Void) {
-        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalized.isEmpty else {
-            logger.info("visual: \(id) has empty label — firing immediately")
-            action()
-            return
-        }
-        // Tokenise the label into significant words. Punctuation and
-        // whitespace are the split boundaries, then stopwords are dropped.
-        // The first survivor is the primary match anchor; the rest are
-        // fallbacks for when the narration paraphrases and the primary
-        // word never shows up (e.g. primary "control" missed, but the
-        // narration mentions the fallback "center" from "Control Center").
-        let allTokens = normalized
-            .split { $0.isWhitespace || $0.isPunctuation }
-            .map(String.init)
-            .filter { !$0.isEmpty }
-        let significant = allTokens.filter { !Self.matchStopwords.contains($0) }
-        // If stopword filtering left nothing, fall back to raw tokens so
-        // we at least have SOMETHING to match on — better a noisy match
-        // than no match at all.
-        let tokens = significant.isEmpty ? allTokens : significant
-        guard !tokens.isEmpty else {
-            logger.info("visual: \(id) label '\(normalized)' has no tokens — firing immediately")
-            action()
-            return
-        }
-        let visual = PendingVisual(
-            id: id,
-            tokens: tokens,
-            fullLabel: normalized,
-            action: action,
-            registeredAt: Date()
-        )
-        pendingVisuals.append(visual)
-        logger.info("visual: \(id) registered for tokens \(tokens) (full: '\(normalized)')")
-    }
-
-    /// When a playback item is about to start, scan the buffer's word
-    /// timings against every currently-pending visual and fire matches
-    /// via `DispatchQueue.main.asyncAfter` at the word's exact offset.
-    /// This is the heart of word-level sync: by combining the buffer's
-    /// wall-clock start time with Kokoro's per-word duration prediction,
-    /// we fire cursors with ~10ms accuracy regardless of where the model
-    /// placed the tool_use block in its output stream.
-    private func schedulePendingVisualsForItem(_ item: PlaybackItem, bufferStartTime: CFTimeInterval) {
-        guard !pendingVisuals.isEmpty, !item.wordTimings.isEmpty else { return }
-
-        var remaining: [PendingVisual] = []
-        for visual in pendingVisuals {
-            guard let match = findMatch(for: visual, in: item.wordTimings) else {
-                remaining.append(visual)
-                continue
-            }
-            let now = CACurrentMediaTime()
-            let fireAt = bufferStartTime + match.startSec
-            let delay = max(0, fireAt - now)
-            let visualId = visual.id
-            let matchedWord = match.text
-            let action = visual.action
-            logger
-                .info(
-                    "visual: \(visualId) matched word '\(matchedWord)' at +\(String(format: "%.2f", match.startSec))s — firing in \(String(format: "%.3f", delay))s"
-                )
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                MainActor.assumeIsolated {
-                    action()
-                }
-            }
-        }
-        pendingVisuals = remaining
-    }
-
-    /// Find the first word in `timings` that matches this visual's label.
-    /// Walks the buffer's word tokens in playback order and, for each one,
-    /// checks against the visual's significant tokens. The primary token
-    /// is tried first; if nothing hits, subsequent significant tokens are
-    /// used as fallbacks. A final pass uses substring containment on the
-    /// full label for cases where Kokoro emits a multi-word unit like
-    /// "wi-fi" as a single token.
-    ///
-    /// Matching preserves narration order — we return the FIRST word in
-    /// this buffer that matches ANY of the visual's tokens, so two
-    /// visuals registered with overlapping tokens (rare) still fire in
-    /// the order their words are spoken.
-    private func findMatch(for visual: PendingVisual, in timings: [WordTiming]) -> WordTiming? {
-        for timing in timings {
-            let word = timing.text.lowercased()
-            // Try every significant token in the visual's label. Equality
-            // wins over prefix, but we accept either for flexibility
-            // ("apple" matches "apples"; "wifi" matches "wi" via prefix).
-            for token in visual.tokens {
-                if word == token { return timing }
-                if word.hasPrefix(token), token.count >= 3 { return timing }
-                if token.hasPrefix(word), word.count >= 3 { return timing }
-            }
-            // Substring check on full label as last resort — catches
-            // Kokoro-tokenised multi-word units like "wi-fi".
-            if visual.fullLabel.contains(word), word.count >= 3 { return timing }
-        }
-        return nil
-    }
-
-    /// Fires any remaining pending visuals immediately. Called on stream
-    /// completion as a safety net — if the model emitted a tool_use whose
-    /// label never appeared in subsequent narration, we still want the
-    /// cursor to show (better late than never). Preserves registration
-    /// order.
-    private func fireAllPendingVisuals() {
-        guard !pendingVisuals.isEmpty else { return }
-        let visuals = pendingVisuals
-        pendingVisuals.removeAll()
-        logger.info("visual: force-firing \(visuals.count) unmatched visual(s) at stream end")
-        for visual in visuals {
-            visual.action()
-        }
-    }
-
-    /// Resumes any waiter whose target is ≤ `inputCharsSpoken`, removing them
-    /// from the pending list.
-    private func resumeReadyWaiters() {
-        guard !barrierWaiters.isEmpty else { return }
-        var remaining: [(target: Int, continuation: CheckedContinuation<Void, Never>)] = []
-        for waiter in barrierWaiters {
-            if waiter.target <= inputCharsSpoken {
-                waiter.continuation.resume()
-            } else {
-                remaining.append(waiter)
-            }
-        }
-        barrierWaiters = remaining
-    }
-
-    /// Resumes ALL pending waiters — called on `stop()` / stream completion to
-    /// avoid deadlocking tools that are waiting for audio that will never play.
-    private func releaseAllBarrierWaiters() {
-        guard !barrierWaiters.isEmpty else { return }
-        let waiters = barrierWaiters
-        barrierWaiters.removeAll()
-        logger.debug("barrier: releasing \(waiters.count) waiter(s) due to stop/complete")
-        for waiter in waiters {
-            waiter.continuation.resume()
-        }
-    }
-
-    /// Cancel all pending visuals without firing them. Used when the user
-    /// explicitly stops the session — firing cursors after stop would be
-    /// surprising. Called from `stop()` only.
-    private func cancelAllPendingVisuals() {
-        guard !pendingVisuals.isEmpty else { return }
-        let cancelled = pendingVisuals.count
-        pendingVisuals.removeAll()
-        logger.info("visual: cancelled \(cancelled) pending visual(s) due to stop")
     }
 
     /// Attempts to flush the buffer eagerly for the first utterance.
@@ -646,18 +322,8 @@ final class SpeechService {
         }
         generationTasks.removeAll()
         orderedSlots.removeAll()
-        slotWatermarks.removeAll()
-        bufferQueueWatermarks.removeAll()
-        playingBufferWatermark = 0
 
         stopPlayback()
-
-        // Release any tool awaiting `awaitSpokenChars` — audio will never
-        // resume, so the tool should be free to proceed (or be cancelled).
-        releaseAllBarrierWaiters()
-        // Cancel (don't fire) pending visuals — session was stopped by
-        // the user; firing stale cursors would be surprising UX.
-        cancelAllPendingVisuals()
 
         if wasSpeaking {
             let cb = streamCompletion
@@ -675,7 +341,6 @@ final class SpeechService {
 
     private func stopPlayback() {
         bufferQueue.removeAll()
-        bufferQueueWatermarks.removeAll()
         isPlaying = false
         playerNode.stop()
     }
@@ -899,25 +564,18 @@ final class SpeechService {
         let manager = KokoroManager.shared
         guard manager.isDownloaded else {
             logger.warning("Kokoro not downloaded, skipping: \(text.prefix(40))…")
-            // No audio will play — still advance the barrier to this watermark
-            // so tools waiting on it don't hang.
-            advanceSpokenChars(to: inputCharsFed)
             utteranceDidFinish()
             return
         }
 
         guard let snapshot = manager.captureGenerationContext() else {
             logger.warning("No voice/engine available, skipping: \(text.prefix(40))…")
-            advanceSpokenChars(to: inputCharsFed)
             utteranceDidFinish()
             return
         }
 
         let slot = nextSlotIndex
         nextSlotIndex += 1
-        // Snapshot the char watermark so we can advance `inputCharsSpoken`
-        // when this slot's audio finishes playing. See `awaitSpokenChars`.
-        slotWatermarks[slot] = inputCharsFed
 
         let task = Task {
             let result: KokoroResult? = await withCheckedContinuation { continuation in
@@ -956,10 +614,6 @@ final class SpeechService {
     /// Called when a TTS generation fails — skips this slot and drains.
     private func slotFailed(slot: Int) {
         utteranceDidFinish()
-        // Still honour this slot's watermark so barrier waiters don't hang.
-        if let watermark = slotWatermarks.removeValue(forKey: slot) {
-            advanceSpokenChars(to: watermark)
-        }
         // Mark slot as processed by advancing past it if it's next in line
         if slot == nextPlaySlot {
             nextPlaySlot += 1
@@ -971,10 +625,8 @@ final class SpeechService {
     private func drainReadySlots() {
         while let item = orderedSlots[nextPlaySlot] {
             orderedSlots.removeValue(forKey: nextPlaySlot)
-            let watermark = slotWatermarks.removeValue(forKey: nextPlaySlot) ?? inputCharsFed
             nextPlaySlot += 1
             bufferQueue.append(item)
-            bufferQueueWatermarks.append(watermark)
             playNextBuffer()
         }
     }
@@ -1002,8 +654,6 @@ final class SpeechService {
         isPlaying = true
 
         let item = bufferQueue.removeFirst()
-        let watermark = bufferQueueWatermarks.isEmpty ? inputCharsFed : bufferQueueWatermarks.removeFirst()
-        playingBufferWatermark = watermark
         ensureEngineRunning(format: item.buffer.format)
 
         if !firstAudioPlaybackFired {
@@ -1011,29 +661,13 @@ final class SpeechService {
             onFirstAudioPlayback?()
         }
 
-        // Word-level visual sync: NOW is the moment this buffer's audio
-        // becomes audible (approximately — AVAudioEngine's output latency
-        // is typically <20ms, well below perceptual threshold). Pair each
-        // pending visual with a word timing in this buffer and fire it
-        // via asyncAfter at the exact word offset.
-        let bufferStartTime = CACurrentMediaTime()
-        schedulePendingVisualsForItem(item, bufferStartTime: bufferStartTime)
-
-        // Use `.dataPlayedBack` so the completion fires AFTER the audio has
-        // actually been output through the hardware — not when the buffer is
-        // merely consumed from the render queue (which happens 100-300ms
-        // earlier). This is critical for voice/visual sync: without it,
-        // `inputCharsSpoken` ticks up before the user has heard the
-        // narration, and tool_use fires early. Matches the pattern used by
-        // LiveKit, mlx-swift-audio, WhisperKit, and QwenVoice.
+        // `.dataPlayedBack` fires AFTER the audio has actually been output
+        // through the hardware (not when the buffer is merely consumed from
+        // the render queue 100-300ms earlier).
         playerNode.scheduleBuffer(item.buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.isPlaying = false
-                // Advance the spoken-chars counter NOW that this buffer has
-                // actually played — any visual tool barrier ≤ watermark can
-                // fire on the very next runloop tick.
-                self.advanceSpokenChars(to: watermark)
                 self.utteranceDidFinish()
 
                 if !self.bufferQueue.isEmpty {
@@ -1052,16 +686,6 @@ final class SpeechService {
     private func completeStream() {
         isStreaming = false
         streamEnded = false
-        // All audio has played — mark spoken == fed and release any lingering
-        // barrier waiters (shouldn't be any if the math is right, but belt).
-        if inputCharsFed > inputCharsSpoken {
-            advanceSpokenChars(to: inputCharsFed)
-        }
-        releaseAllBarrierWaiters()
-        // Stream ended naturally — fire any pending visuals whose label
-        // never appeared in the narration. Better to show the cursor late
-        // than never show it at all.
-        fireAllPendingVisuals()
         let cb = streamCompletion
         streamCompletion = nil
         cb?()

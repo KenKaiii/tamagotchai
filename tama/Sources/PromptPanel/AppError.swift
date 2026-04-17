@@ -145,17 +145,26 @@ enum AppError {
 
     /// Detects temporary usage limits and returns a user-friendly message with reset time.
     private static func usageLimitInfo(statusCode: Int, body: String) -> String? {
-        guard statusCode == 429,
-              body.contains("usage_limit_reached") || body.contains("usage limit")
-        else { return nil }
+        let looksLikeOpenAI = body.contains("usage_limit_reached") || body.contains("usage limit")
+        let looksLikeGemini = body.contains("resource_exhausted")
+            || (body.contains("quota") && (body.contains("retrydelay") || body.contains("reset after")))
 
-        // Try to extract resets_in_seconds from the JSON body
+        guard statusCode == 429, looksLikeOpenAI || looksLikeGemini else { return nil }
+
+        // Try to extract OpenAI's resets_in_seconds field.
         if let data = body.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errorObj = json["error"] as? [String: Any],
            let resetSeconds = errorObj["resets_in_seconds"] as? Int
         {
-            let resetStr = formatResetTime(seconds: resetSeconds)
+            let resetStr = formatResetTime(seconds: TimeInterval(resetSeconds))
+            return "You've hit the usage limit for this model. Resets in \(resetStr). "
+                + "Switch to a different model in AI Settings."
+        }
+
+        // Try Gemini retry-delay patterns.
+        if let seconds = parseGeminiRetryDelay(body) {
+            let resetStr = formatResetTime(seconds: seconds)
             return "You've hit the usage limit for this model. Resets in \(resetStr). "
                 + "Switch to a different model in AI Settings."
         }
@@ -164,16 +173,73 @@ enum AppError {
             + "Try again later or switch to a different model in AI Settings."
     }
 
+    /// Parses Gemini retry-delay formats from an error body. Returns seconds.
+    private static func parseGeminiRetryDelay(_ body: String) -> TimeInterval? {
+        // Pattern: "retryDelay": "34.074824224s" or "123ms"
+        if let match = firstMatch(in: body, pattern: #""retrydelay"\s*:\s*"([0-9.]+)(ms|s)""#),
+           match.count == 3,
+           let value = Double(match[1])
+        {
+            return match[2] == "ms" ? value / 1000.0 : value
+        }
+
+        // Pattern: "reset after 18h31m10s" / "10m15s" / "39s"
+        if let match = firstMatch(
+            in: body,
+            pattern: #"reset after (?:(\d+)h)?(?:(\d+)m)?([0-9]+(?:\.[0-9]+)?)s"#
+        ), match.count == 4 {
+            let hours = Double(match[1]) ?? 0
+            let minutes = Double(match[2]) ?? 0
+            let seconds = Double(match[3]) ?? 0
+            return (hours * 60 + minutes) * 60 + seconds
+        }
+
+        // Pattern: "Please retry in Xs" or "Please retry in Xms"
+        if let match = firstMatch(in: body, pattern: #"please retry in ([0-9.]+)(ms|s)"#),
+           match.count == 3,
+           let value = Double(match[1])
+        {
+            return match[2] == "ms" ? value / 1000.0 : value
+        }
+
+        return nil
+    }
+
+    /// Returns the first regex match's groups (group 0 = full match) or nil.
+    /// The pattern is matched case-insensitively.
+    private static func firstMatch(in body: String, pattern: String) -> [String]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(body.startIndex ..< body.endIndex, in: body)
+        guard let match = regex.firstMatch(in: body, options: [], range: range) else { return nil }
+        var groups: [String] = []
+        for i in 0 ..< match.numberOfRanges {
+            let r = match.range(at: i)
+            if r.location == NSNotFound {
+                groups.append("")
+            } else if let swiftRange = Range(r, in: body) {
+                groups.append(String(body[swiftRange]))
+            } else {
+                groups.append("")
+            }
+        }
+        return groups
+    }
+
     /// Formats seconds into a human-readable duration like "2h 30m" or "45m".
-    private static func formatResetTime(seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
+    private static func formatResetTime(seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
         if hours > 0, minutes > 0 {
             return "\(hours)h \(minutes)m"
         } else if hours > 0 {
             return "\(hours)h"
         } else if minutes > 0 {
             return "\(minutes)m"
+        } else if total > 0 {
+            return "\(total)s"
         } else {
             return "less than a minute"
         }
@@ -196,6 +262,12 @@ enum AppError {
             "plan does not",
             "upgrade your plan",
             "rate limit",
+            // Google / Gemini Code Assist
+            "permission_denied",
+            "cloud ai companion",
+            "gemini code assist",
+            "requires a paid",
+            "consumer suite",
         ]
 
         // Only match on 400/403/429 to avoid false positives on unrelated errors

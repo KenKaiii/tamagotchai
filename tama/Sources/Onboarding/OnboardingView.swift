@@ -608,13 +608,28 @@ struct OnboardingView: View {
 
         Task {
             do {
-                let result = try await OpenAIOAuth.shared.authenticate()
-                let credential = ProviderCredential.oauth(
-                    accessToken: result.accessToken,
-                    refreshToken: result.refreshToken,
-                    expiresAt: result.expiresAt,
-                    accountId: result.accountId
-                )
+                let credential: ProviderCredential
+                switch provider {
+                case .openai:
+                    let result = try await OpenAIOAuth.shared.authenticate()
+                    credential = ProviderCredential.oauth(
+                        accessToken: result.accessToken,
+                        refreshToken: result.refreshToken,
+                        expiresAt: result.expiresAt,
+                        accountId: result.accountId
+                    )
+                case .gemini:
+                    let result = try await GeminiOAuth.shared.authenticate()
+                    credential = ProviderCredential.oauth(
+                        accessToken: result.accessToken,
+                        refreshToken: result.refreshToken,
+                        expiresAt: result.expiresAt,
+                        accountId: result.projectId
+                    )
+                default:
+                    isAuthenticating = false
+                    return
+                }
                 ProviderStore.shared.setCredential(credential, for: provider)
                 let defaultModel = ModelRegistry.defaultModel(for: provider)
                 ProviderStore.shared.setSelectedModel(defaultModel)

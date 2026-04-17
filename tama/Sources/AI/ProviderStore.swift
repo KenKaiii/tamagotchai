@@ -101,13 +101,33 @@ final class ProviderStore {
         // Auto-refresh expired OAuth tokens
         if cred.isOAuth, cred.isExpired, let refreshToken = cred.refreshToken {
             logger.info("Token expired for \(provider.displayName), refreshing…")
-            let refreshed = try await OpenAIOAuth.shared.refresh(refreshToken: refreshToken)
-            let newCred = ProviderCredential.oauth(
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresAt: refreshed.expiresAt,
-                accountId: refreshed.accountId
-            )
+
+            let newCred: ProviderCredential
+            switch provider {
+            case .openai:
+                let refreshed = try await OpenAIOAuth.shared.refresh(refreshToken: refreshToken)
+                newCred = ProviderCredential.oauth(
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken,
+                    expiresAt: refreshed.expiresAt,
+                    accountId: refreshed.accountId
+                )
+            case .gemini:
+                let projectId = cred.accountId ?? ""
+                let refreshed = try await GeminiOAuth.shared.refresh(
+                    refreshToken: refreshToken,
+                    projectId: projectId
+                )
+                newCred = ProviderCredential.oauth(
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken,
+                    expiresAt: refreshed.expiresAt,
+                    accountId: refreshed.projectId
+                )
+            default:
+                throw ProviderStoreError.noCredentials(provider)
+            }
+
             data.credentials[provider.rawValue] = newCred
             save()
             return newCred.accessToken

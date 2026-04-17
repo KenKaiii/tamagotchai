@@ -3,6 +3,7 @@ import Foundation
 /// Supported AI providers.
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case openai
+    case gemini
     case moonshot
     case xiaomi
     case minimax
@@ -14,6 +15,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Moonshot"
         case .xiaomi: "Xiaomi"
         case .openai: "OpenAI"
+        case .gemini: "Google Gemini"
         case .minimax: "MiniMax"
         }
     }
@@ -23,6 +25,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Kimi K2.5"
         case .xiaomi: "MiMo-V2-Pro (Token Plan)"
         case .openai: "GPT-5.4, Codex"
+        case .gemini: "Gemini 2.5 Pro / Flash (via Google account)"
         case .minimax: "MiniMax M2.7"
         }
     }
@@ -33,6 +36,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/chat/completions"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1"
         case .openai: "https://chatgpt.com/backend-api/codex/responses"
+        case .gemini: "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse"
         case .minimax: "https://api.minimax.io/anthropic/v1/messages"
         }
     }
@@ -44,6 +48,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/models"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/models"
         case .openai: ""
+        case .gemini: ""
         case .minimax: "https://api.minimax.io/anthropic/v1/models"
         }
     }
@@ -54,6 +59,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: true
         case .openai: false
+        case .gemini: false
         case .minimax: false
         }
     }
@@ -62,7 +68,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     var usesAnthropicAPI: Bool {
         switch self {
         case .minimax: true
-        case .moonshot, .xiaomi, .openai: false
+        case .moonshot, .xiaomi, .openai, .gemini: false
         }
     }
 
@@ -72,6 +78,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .gemini: true
         case .minimax: false
         }
     }
@@ -82,7 +89,16 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .gemini: false
         case .minimax: false
+        }
+    }
+
+    /// Whether this provider uses the Google Cloud Code Assist (Gemini) API format.
+    var usesGeminiAPI: Bool {
+        switch self {
+        case .gemini: true
+        case .moonshot, .xiaomi, .openai, .minimax: false
         }
     }
 
@@ -94,6 +110,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: false // Xiaomi Token Plan doesn't support this param
         case .openai: false
+        case .gemini: false
         case .minimax: true
         }
     }
@@ -196,6 +213,46 @@ enum ModelRegistry {
             supportsVision: false
         ),
         ModelInfo(
+            id: "gemini-3-pro-preview",
+            name: "Gemini 3 Pro (Preview)",
+            provider: .gemini,
+            contextWindow: 1_048_576,
+            maxOutputTokens: 65535,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "gemini-3-flash-preview",
+            name: "Gemini 3 Flash (Preview)",
+            provider: .gemini,
+            contextWindow: 1_048_576,
+            maxOutputTokens: 65535,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "gemini-2.5-pro",
+            name: "Gemini 2.5 Pro",
+            provider: .gemini,
+            contextWindow: 1_048_576,
+            maxOutputTokens: 65535,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "gemini-2.5-flash",
+            name: "Gemini 2.5 Flash",
+            provider: .gemini,
+            contextWindow: 1_048_576,
+            maxOutputTokens: 65535,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
             id: "MiniMax-M2.7",
             name: "MiniMax M2.7",
             provider: .minimax,
@@ -231,6 +288,8 @@ enum ModelRegistry {
             models.first { $0.id == "xiaomi-token-plan-sgp/mimo-v2-pro" }!
         case .openai:
             models.first { $0.id == "gpt-5.4-mini" }!
+        case .gemini:
+            models.first { $0.id == "gemini-2.5-flash" }!
         case .minimax:
             models.first { $0.id == "MiniMax-M2.7-highspeed" }!
         }

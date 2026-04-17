@@ -125,7 +125,15 @@ final class ClaudeService {
     /// (e.g. OpenAI free-tier limit) that won't resolve with retries.
     private static func isHardUsageLimit(_ body: String) -> Bool {
         let lower = body.lowercased()
-        return lower.contains("usage_limit_reached") || lower.contains("usage limit")
+        if lower.contains("usage_limit_reached") || lower.contains("usage limit") {
+            return true
+        }
+        // Gemini free-tier daily cap: RESOURCE_EXHAUSTED with a retryDelay
+        // longer than our retry budget (~14s max) means we won't recover via retry.
+        if lower.contains("resource_exhausted"), lower.contains("quota") {
+            return true
+        }
+        return false
     }
 
     /// Sends a single request without retries.
@@ -137,6 +145,16 @@ final class ClaudeService {
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
+        if model.provider.usesGeminiAPI {
+            return try await streamGeminiRequest(
+                model: model,
+                messages: messages,
+                tools: tools,
+                systemPrompt: systemPrompt,
+                onEvent: onEvent
+            )
+        }
+
         if model.provider.usesCodexAPI {
             return try await streamCodexRequest(
                 model: model,
@@ -246,6 +264,61 @@ final class ClaudeService {
         }
 
         let parser = CodexStreamParser(onEvent: onEvent)
+        try await parser.parse(bytes: bytes)
+        let result = parser.buildResponse()
+        onEvent(.response(result))
+        return result
+    }
+
+    // MARK: - Gemini (Cloud Code Assist) Streaming
+
+    private func streamGeminiRequest(
+        model: ModelInfo,
+        messages: [[String: Any]],
+        tools: [[String: Any]],
+        systemPrompt: String?,
+        onEvent: @escaping @Sendable (StreamEvent) -> Void
+    ) async throws -> ClaudeResponse {
+        let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
+        guard let projectId = ProviderStore.shared.credential(for: model.provider)?.accountId,
+              !projectId.isEmpty
+        else {
+            throw ClaudeServiceError.notLoggedIn
+        }
+
+        // Build system prompt with dynamic context
+        var fullSystemPrompt = baseSystemPrompt
+        if let extra = systemPrompt {
+            fullSystemPrompt += "\n\n" + extra
+        }
+        fullSystemPrompt += "\n\n" + dynamicContext()
+
+        let request = try GeminiRequestBuilder.buildRequest(
+            token: token,
+            projectId: projectId,
+            model: model,
+            messages: messages,
+            tools: tools,
+            systemPrompt: fullSystemPrompt
+        )
+
+        let (bytes, response) = try await streamingSession.bytes(for: request)
+
+        guard let http = response as? HTTPURLResponse,
+              (200 ..< 300).contains(http.statusCode)
+        else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            var bodyData = Data()
+            for try await byte in bytes {
+                bodyData.append(byte)
+                if bodyData.count > 8192 { break }
+            }
+            let body = String(data: bodyData, encoding: .utf8) ?? "<no body>"
+            logger.error("Gemini API failed — HTTP \(code, privacy: .public): \(body, privacy: .public)")
+            throw ClaudeServiceError.apiError(statusCode: code, body: body)
+        }
+
+        let parser = GeminiStreamParser(onEvent: onEvent)
         try await parser.parse(bytes: bytes)
         let result = parser.buildResponse()
         onEvent(.response(result))

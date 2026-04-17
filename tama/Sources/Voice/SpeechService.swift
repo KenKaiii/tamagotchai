@@ -106,16 +106,35 @@ final class SpeechService {
     /// the firing.
     private struct PendingVisual {
         let id: String
-        /// Lowercased first word of the visual's display label (e.g. "apple"
-        /// for "Apple menu"). Matched against Kokoro word tokens with
-        /// case-insensitive equality / prefix check.
-        let labelFirstWord: String
-        /// Full lowercased label for secondary matching when the first word
-        /// is too generic (e.g. "the File menu" — we'd want "file").
+        /// All significant (non-stopword) tokens from the visual's label,
+        /// lowercased and stripped of punctuation. For label "the File
+        /// menu" this is ["file", "menu"]; for "Wi-Fi" it's ["wi", "fi"].
+        /// The FIRST entry is the primary match anchor; subsequent entries
+        /// are tried as fallbacks if the primary doesn't appear in
+        /// narration. Empty only when the label is purely stopwords,
+        /// which we refuse at registration time.
+        let tokens: [String]
+        /// Full lowercased label preserved for substring fallbacks and
+        /// for logging. Punctuation preserved so "wi-fi" still matches a
+        /// Kokoro-tokenised "wi-fi" unit via `contains`.
         let fullLabel: String
         let action: @MainActor () -> Void
         let registeredAt: Date
     }
+
+    /// Common English stopwords skipped when picking a visual's primary
+    /// match token. Without this, a label like "the Apple menu" would
+    /// anchor on "the" and fire the cursor on the FIRST "the" uttered in
+    /// narration — usually the wrong moment entirely. The list is narrow
+    /// on purpose: only true semantic-free words that never name a UI
+    /// target. Kept as a private static set so the allocator hits it once.
+    private static let matchStopwords: Set<String> = [
+        "the", "a", "an", "this", "that", "these", "those", "it", "its",
+        "your", "my", "our", "their", "his", "her",
+        "is", "was", "are", "were", "be", "been", "being",
+        "and", "or", "but", "of", "to", "for", "in", "on", "at", "by",
+        "with", "from",
+    ]
 
     private var pendingVisuals: [PendingVisual] = []
 
@@ -195,6 +214,16 @@ final class SpeechService {
 
     /// Whether the service is currently speaking.
     var isSpeaking: Bool { isPlaying || !bufferQueue.isEmpty || pendingUtterances > 0 }
+
+    /// True while a streaming session is active (between `beginStreaming()`
+    /// and `finishStreaming()`/`stop()`). Unlike `isSpeaking`, this stays
+    /// true across the gap between the model finishing its narration and
+    /// the next turn's audio starting — so callers that need "am I in a
+    /// voice call right now?" (like `AgentLoop`'s visual-tool gating) can
+    /// trust it between turns. `isSpeaking` answers the narrower "is audio
+    /// physically playing this instant?" question and flips to false in
+    /// those quiet inter-turn gaps.
+    var isVoiceSessionActive: Bool { isStreaming }
 
     // MARK: - Streaming TTS
 
@@ -335,25 +364,35 @@ final class SpeechService {
             action()
             return
         }
-        // First word is the primary match key — most visuals are named
-        // by a single leading noun ("Apple", "Wi-Fi", "Finder"). Full
-        // label kept for phrase matching fallback.
-        let firstWord = normalized.split { $0.isWhitespace || $0.isPunctuation }.first.map(String.init) ?? normalized
+        // Tokenise the label into significant words. Punctuation and
+        // whitespace are the split boundaries, then stopwords are dropped.
+        // The first survivor is the primary match anchor; the rest are
+        // fallbacks for when the narration paraphrases and the primary
+        // word never shows up (e.g. primary "control" missed, but the
+        // narration mentions the fallback "center" from "Control Center").
+        let allTokens = normalized
+            .split { $0.isWhitespace || $0.isPunctuation }
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        let significant = allTokens.filter { !Self.matchStopwords.contains($0) }
+        // If stopword filtering left nothing, fall back to raw tokens so
+        // we at least have SOMETHING to match on — better a noisy match
+        // than no match at all.
+        let tokens = significant.isEmpty ? allTokens : significant
+        guard !tokens.isEmpty else {
+            logger.info("visual: \(id) label '\(normalized)' has no tokens — firing immediately")
+            action()
+            return
+        }
         let visual = PendingVisual(
             id: id,
-            labelFirstWord: firstWord,
+            tokens: tokens,
             fullLabel: normalized,
             action: action,
             registeredAt: Date()
         )
         pendingVisuals.append(visual)
-        logger.info("visual: \(id) registered for word '\(firstWord)' (full: '\(normalized)')")
-
-        // Scan buffers already in the queue — the matching word may already
-        // be about to play. `schedulePendingVisualsForItem` is deferred to
-        // playback (see `playNextBuffer`) for buffers not yet started, so
-        // this pass only helps when the registration races ahead of fast
-        // playback; harmless either way.
+        logger.info("visual: \(id) registered for tokens \(tokens) (full: '\(normalized)')")
     }
 
     /// When a playback item is about to start, scan the buffer's word
@@ -392,15 +431,30 @@ final class SpeechService {
     }
 
     /// Find the first word in `timings` that matches this visual's label.
-    /// Tries exact first-word equality first (e.g. visual "apple" matches
-    /// word "Apple"), then falls back to substring match on the full label
-    /// (e.g. visual "wi-fi" matches a word containing "wi-fi" if Kokoro
-    /// tokenized it as a single unit).
+    /// Walks the buffer's word tokens in playback order and, for each one,
+    /// checks against the visual's significant tokens. The primary token
+    /// is tried first; if nothing hits, subsequent significant tokens are
+    /// used as fallbacks. A final pass uses substring containment on the
+    /// full label for cases where Kokoro emits a multi-word unit like
+    /// "wi-fi" as a single token.
+    ///
+    /// Matching preserves narration order — we return the FIRST word in
+    /// this buffer that matches ANY of the visual's tokens, so two
+    /// visuals registered with overlapping tokens (rare) still fire in
+    /// the order their words are spoken.
     private func findMatch(for visual: PendingVisual, in timings: [WordTiming]) -> WordTiming? {
         for timing in timings {
             let word = timing.text.lowercased()
-            if word == visual.labelFirstWord { return timing }
-            if word.hasPrefix(visual.labelFirstWord) { return timing }
+            // Try every significant token in the visual's label. Equality
+            // wins over prefix, but we accept either for flexibility
+            // ("apple" matches "apples"; "wifi" matches "wi" via prefix).
+            for token in visual.tokens {
+                if word == token { return timing }
+                if word.hasPrefix(token), token.count >= 3 { return timing }
+                if token.hasPrefix(word), word.count >= 3 { return timing }
+            }
+            // Substring check on full label as last resort — catches
+            // Kokoro-tokenised multi-word units like "wi-fi".
             if visual.fullLabel.contains(word), word.count >= 3 { return timing }
         }
         return nil

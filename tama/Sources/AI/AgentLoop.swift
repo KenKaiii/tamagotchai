@@ -298,7 +298,7 @@ final class AgentLoop {
             // The agent loop returns a synthetic tool_result immediately
             // so the model can keep streaming without blocking on playback.
             if Self.voiceSyncToolNames.contains(call.name),
-               await SpeechService.shared.isSpeaking || SpeechService.shared.spokenCharsSnapshot > 0,
+               await SpeechService.shared.isVoiceSessionActive,
                let tool = registry.tool(named: call.name)
             {
                 let label = Self.labelForVisualTool(args: args, fallback: call.name)

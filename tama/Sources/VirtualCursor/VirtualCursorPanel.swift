@@ -28,8 +28,28 @@ final class VirtualCursorPanel: NSPanel {
     private let outlineLayer: CALayer
 
     /// Pulse ring layer — a hollow circle that expands and fades when the
-    /// agent "clicks" at the target.
+    /// agent "clicks" at the target. Pairs with two staggered ripple rings
+    /// (`pulseLayer2`, `pulseLayer3`) for a radar/sonar triple-ripple effect
+    /// on arrival, matching the attention-grabbing pattern used by cursor-
+    /// highlight apps like Mousepospé and Cursor Highlighter Pro.
     private let pulseLayer: CAShapeLayer
+    private let pulseLayer2 = CAShapeLayer()
+    private let pulseLayer3 = CAShapeLayer()
+
+    /// Persistent glowing halo ring drawn around the cursor while visible.
+    /// Combines a hollow stroked ring with a large, soft coloured shadow to
+    /// produce a luminous outer glow — the single-layer equivalent of the
+    /// multi-pass stroke trick used by `RingHighlight.swift` in the
+    /// mac-mouse-highlighter reference repo. Without this, the bare arrow
+    /// glyph is easy to lose against busy UI.
+    private let haloLayer = CAShapeLayer()
+
+    /// Screen-wide dim overlay with a circular cutout around the cursor.
+    /// Briefly fades in when the cursor arrives at a new target and then
+    /// fades out, pulling the user's eye to the area of focus the same way
+    /// Mouseposé's signature "spotlight" effect does. Uses `fillRule =
+    /// .evenOdd` so the circle subtracts cleanly from the outer rectangle.
+    private let spotlightLayer = CAShapeLayer()
 
     /// Optional label shown next to the cursor ("File menu" etc.).
     private let labelView: VirtualCursorLabelView
@@ -89,13 +109,37 @@ final class VirtualCursorPanel: NSPanel {
 
     // MARK: - Config
 
-    /// Logical size (in points) of the cursor glyph. Doubled from 32 — at
-    /// the smaller size users had trouble spotting the tutor cursor on
-    /// modern high-res displays, especially against busy UI.
-    private static let cursorSize: CGFloat = 64
-    /// Outline padding around the cursor for the white halo. Scaled with
+    /// Logical size (in points) of the cursor glyph. 36pt is close to the
+    /// macOS default cursor size but slightly larger so the tutor arrow
+    /// reads as intentional on high-res displays — we rely on the halo,
+    /// spotlight and ripple effects for attention-grabbing rather than
+    /// pure glyph size.
+    private static let cursorSize: CGFloat = 36
+    /// Outline padding around the cursor for the navy halo. Scaled with
     /// the cursor so the halo stays proportional.
-    private static let outlinePadding: CGFloat = 4
+    private static let outlinePadding: CGFloat = 2
+
+    // MARK: - Brand palette
+
+    // Tutor-overlay colours are centralised here so the cursor, pulse,
+    // halo, arrow, highlight, scroll-hint and ghost dots all read as one
+    // coordinated brand element. Derived from the app icon:
+    //   - Mascot body cream → saturated to honey-amber for on-screen
+    //     visibility (`#E8B44A`). Replaces the previous `systemOrange`
+    //     which sat outside the rest of the app's palette and collided
+    //     semantically with the red/green functional states used elsewhere.
+    //   - Icon squircle navy → used as the contrast outline + shadow
+    //     colour (`#333340`). Replaces the previous pure-white outline.
+
+    /// Primary tutor accent — honey amber. Used for the cursor glyph fill,
+    /// pulse rings, halo ring, arrow fill, highlight stroke, countdown
+    /// stroke, scroll-hint chevron and ghost dots.
+    static let brandAmber = NSColor(srgbRed: 0.91, green: 0.71, blue: 0.29, alpha: 1.0)
+
+    /// Dark contrast colour — charcoal navy matching the app icon's
+    /// squircle. Used for the cursor outline halo and the tutor label
+    /// background — anywhere we previously reached for pure white.
+    static let brandNavy = NSColor(srgbRed: 0.20, green: 0.20, blue: 0.25, alpha: 1.0)
     /// Offset from the target to where the cursor tip is drawn. The arrow
     /// tip (top-left of the image) lands *on* the target, so the visible
     /// body extends down-and-right from the point.
@@ -174,6 +218,7 @@ final class VirtualCursorPanel: NSPanel {
         // chevron are separate subviews layered above everything else.
         configureOverlayLayers()
         configureLayers()
+        configureAttentionLayers()
         root.addSubview(highlightLabelView)
         root.addSubview(arrowLabelView)
         root.addSubview(labelView)
@@ -202,6 +247,10 @@ final class VirtualCursorPanel: NSPanel {
         guard frame != screenFrame else { return }
         setFrame(screenFrame, display: true)
         contentView?.frame = NSRect(origin: .zero, size: screenFrame.size)
+        // The spotlight overlay covers the WHOLE panel bounds with a
+        // cutout subtracted; resize it to the new panel frame so the dim
+        // rect still reaches every edge after a display resolution change.
+        spotlightLayer.frame = CGRect(origin: .zero, size: screenFrame.size)
     }
 
     /// Fade the cursor in at `point` (in global screen coordinates). If a
@@ -229,24 +278,35 @@ final class VirtualCursorPanel: NSPanel {
         // `cursorLayer.position = local` only updates the model layer —
         // the user sees the cursor materialise at the stale position while
         // the label pill (a separate NSView) correctly lands at `local`.
-        // Clearing all three keys guarantees a clean slate.
-        cursorLayer.removeAnimation(forKey: "move")
-        outlineLayer.removeAnimation(forKey: "move")
-        pulseLayer.removeAnimation(forKey: "move")
+        // Clearing all keys guarantees a clean slate. EVERY layer that
+        // receives a spring `move` in `moveCursor` must be cleaned here —
+        // including the halo and the extra pulse rings — otherwise their
+        // presentation layers stay pinned at the old target even after we
+        // update the model layer, leaving a ghost halo trailing behind.
+        let movingLayers: [CALayer] = [cursorLayer, outlineLayer, pulseLayer, pulseLayer2, pulseLayer3, haloLayer]
+        for layer in movingLayers {
+            layer.removeAnimation(forKey: "move")
+        }
         cursorLayer.removeAnimation(forKey: "fadeOut")
         outlineLayer.removeAnimation(forKey: "fadeOut")
+        haloLayer.removeAnimation(forKey: "fadeOut")
         cursorLayer.removeAnimation(forKey: "fadeIn")
         outlineLayer.removeAnimation(forKey: "fadeIn")
+        haloLayer.removeAnimation(forKey: "fadeIn")
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         cursorLayer.position = local
         outlineLayer.position = local
         pulseLayer.position = local
+        pulseLayer2.position = local
+        pulseLayer3.position = local
+        haloLayer.position = local
         CATransaction.commit()
 
         updateGhosts(upcoming: upcoming, fromLocal: local)
         updateLabel(label, at: local)
+        flashSpotlight(at: local)
 
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0
@@ -257,8 +317,10 @@ final class VirtualCursorPanel: NSPanel {
         fade.isRemovedOnCompletion = false
         cursorLayer.opacity = 1
         outlineLayer.opacity = 1
+        haloLayer.opacity = 1
         cursorLayer.add(fade, forKey: "fadeIn")
         outlineLayer.add(fade, forKey: "fadeIn")
+        haloLayer.add(fade, forKey: "fadeIn")
 
         isCursorVisible = true
 
@@ -307,13 +369,23 @@ final class VirtualCursorPanel: NSPanel {
         // can otherwise pin the presentation-layer opacity at 0 even after
         // we reset the model layer, leaving the cursor invisible during
         // subsequent moves while only the label shows.
-        cursorLayer.removeAnimation(forKey: "move")
-        outlineLayer.removeAnimation(forKey: "move")
-        pulseLayer.removeAnimation(forKey: "move")
+        // Every layer that gets re-animated in the spring loop below must
+        // also be cleared here — including halo + the two extra pulse rings
+        // — otherwise their stale `move` springs (fillMode=forwards,
+        // isRemovedOnCompletion=false) keep the presentation layer pinned
+        // at the previous target while the new animation is being added.
+        let movingLayersToClean: [CALayer] = [
+            cursorLayer, outlineLayer, pulseLayer, pulseLayer2, pulseLayer3, haloLayer,
+        ]
+        for layer in movingLayersToClean {
+            layer.removeAnimation(forKey: "move")
+        }
         cursorLayer.removeAnimation(forKey: "fadeOut")
         outlineLayer.removeAnimation(forKey: "fadeOut")
+        haloLayer.removeAnimation(forKey: "fadeOut")
         cursorLayer.removeAnimation(forKey: "fadeIn")
         outlineLayer.removeAnimation(forKey: "fadeIn")
+        haloLayer.removeAnimation(forKey: "fadeIn")
         stopIdleBreath()
 
         // Defensive: ensure the cursor is actually visible. `moveCursor` is
@@ -356,10 +428,13 @@ final class VirtualCursorPanel: NSPanel {
         cursorLayer.position = local
         outlineLayer.position = local
         pulseLayer.position = local
+        pulseLayer2.position = local
+        pulseLayer3.position = local
+        haloLayer.position = local
         CATransaction.commit()
 
         let effectiveDuration: TimeInterval
-        for layer in [cursorLayer, outlineLayer, pulseLayer] {
+        for layer in [cursorLayer, outlineLayer, pulseLayer, pulseLayer2, pulseLayer3, haloLayer] {
             if Self.reduceMotion {
                 let anim = CABasicAnimation(keyPath: "position")
                 anim.fromValue = NSValue(point: current)
@@ -389,6 +464,12 @@ final class VirtualCursorPanel: NSPanel {
 
         updateGhosts(upcoming: upcoming, fromLocal: local)
         updateLabel(label, at: local, animateDuration: effectiveDuration)
+
+        // Trigger a spotlight flash at the new target so the user's eye
+        // tracks the move, not just sees the destination. Fired alongside
+        // the position animation so the cursor visibly lands INTO the
+        // spotlight rather than arriving and then being highlighted.
+        flashSpotlight(at: local)
 
         // Arrival bump + resume idle breath after the move settles.
         DispatchQueue.main.asyncAfter(deadline: .now() + effectiveDuration) { [weak self] in
@@ -481,8 +562,8 @@ final class VirtualCursorPanel: NSPanel {
                 ),
                 transform: nil
             )
-            ghost.fillColor = NSColor.systemOrange.withAlphaComponent(0.85).cgColor
-            ghost.strokeColor = NSColor.white.withAlphaComponent(0.6).cgColor
+            ghost.fillColor = Self.brandAmber.withAlphaComponent(0.85).cgColor
+            ghost.strokeColor = Self.brandNavy.withAlphaComponent(0.6).cgColor
             ghost.lineWidth = 1
             ghost.position = ghostPoint
             ghost.opacity = 0
@@ -534,8 +615,10 @@ final class VirtualCursorPanel: NSPanel {
 
         cursorLayer.opacity = 0
         outlineLayer.opacity = 0
+        haloLayer.opacity = 0
         cursorLayer.add(fade, forKey: "fadeOut")
         outlineLayer.add(fade, forKey: "fadeOut")
+        haloLayer.add(fade, forKey: "fadeOut")
 
         labelView.fadeOut(duration: effectiveDuration)
     }
@@ -575,10 +658,15 @@ final class VirtualCursorPanel: NSPanel {
         guard isCursorVisible else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         let center = cursorLayer.presentation()?.position ?? cursorLayer.position
-        pulseLayer.position = center
 
+        // Triple-ripple: three concentric rings expanding and fading with
+        // staggered `beginTime` offsets produce the radar/sonar attention
+        // signature used by Mousepossé and Cursor Highlighter Pro. One
+        // ring is easy to miss in peripheral vision; three is not.
+        let layers = [pulseLayer, pulseLayer2, pulseLayer3]
+        let rippleDelays: [CFTimeInterval] = [0.0, 0.18, 0.36]
         let startRadius: CGFloat = 8
-        let endRadius: CGFloat = 32
+        let endRadius: CGFloat = 36
         let startPath = CGPath(
             ellipseIn: CGRect(x: -startRadius, y: -startRadius, width: startRadius * 2, height: startRadius * 2),
             transform: nil
@@ -588,27 +676,81 @@ final class VirtualCursorPanel: NSPanel {
             transform: nil
         )
 
-        let expand = CABasicAnimation(keyPath: "path")
-        expand.fromValue = startPath
-        expand.toValue = endPath
-        expand.duration = 0.6
-        expand.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        for (index, layer) in layers.enumerated() {
+            layer.position = center
 
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0.8
-        fade.toValue = 0.0
-        fade.duration = 0.6
-        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            let expand = CABasicAnimation(keyPath: "path")
+            expand.fromValue = startPath
+            expand.toValue = endPath
+
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0.9
+            fade.toValue = 0.0
+
+            let group = CAAnimationGroup()
+            group.animations = [expand, fade]
+            group.duration = 0.8
+            group.beginTime = CACurrentMediaTime() + rippleDelays[index]
+            group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            group.fillMode = .forwards
+            group.isRemovedOnCompletion = true
+
+            layer.path = startPath
+            layer.opacity = 0
+            layer.add(group, forKey: "pulse")
+        }
+    }
+
+    /// Briefly dims the entire panel except a circular cutout around the
+    /// cursor. This is Mouseposé's signature "spotlight" effect — the
+    /// single most effective technique for pulling a viewer's eye to the
+    /// area of focus. Fades in quickly, holds ~0.5s, then fades out so it
+    /// doesn't interfere with the user's actual work.
+    private func flashSpotlight(at point: CGPoint) {
+        guard !Self.reduceMotion else { return }
+        // Size the cutout generously so it includes the cursor glyph AND
+        // the halo's glow — otherwise the user's eye lands on the dark
+        // overlay edge rather than the cursor inside it.
+        let cutoutRadius: CGFloat = Self.cursorSize * 2.0
+        let maskPath = CGMutablePath()
+        maskPath.addRect(spotlightLayer.bounds)
+        let cutoutRect = CGRect(
+            x: point.x - cutoutRadius,
+            y: point.y - cutoutRadius,
+            width: cutoutRadius * 2,
+            height: cutoutRadius * 2
+        )
+        maskPath.addEllipse(in: cutoutRect)
+        spotlightLayer.path = maskPath
+
+        // Sequence: fade in → hold → fade out. Total ~1.0s.
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0.0
+        fadeIn.toValue = 1.0
+        fadeIn.duration = 0.2
+        fadeIn.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        let hold = CABasicAnimation(keyPath: "opacity")
+        hold.fromValue = 1.0
+        hold.toValue = 1.0
+        hold.beginTime = 0.2
+        hold.duration = 0.3
+
+        let fadeOut = CABasicAnimation(keyPath: "opacity")
+        fadeOut.fromValue = 1.0
+        fadeOut.toValue = 0.0
+        fadeOut.beginTime = 0.5
+        fadeOut.duration = 0.5
+        fadeOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
         let group = CAAnimationGroup()
-        group.animations = [expand, fade]
-        group.duration = 0.6
+        group.animations = [fadeIn, hold, fadeOut]
+        group.duration = 1.0
         group.fillMode = .forwards
         group.isRemovedOnCompletion = true
 
-        pulseLayer.path = startPath
-        pulseLayer.opacity = 0
-        pulseLayer.add(group, forKey: "pulse")
+        spotlightLayer.opacity = 0
+        spotlightLayer.add(group, forKey: "flash")
     }
 
     // MARK: - Highlight overlay
@@ -972,7 +1114,7 @@ final class VirtualCursorPanel: NSPanel {
         )?.withSymbolConfiguration(config) {
             scrollHintImageView.image = image
         }
-        scrollHintImageView.contentTintColor = NSColor.systemOrange
+        scrollHintImageView.contentTintColor = Self.brandAmber
         scrollHintImageView.sizeToFit()
 
         // Pin to the appropriate edge of visibleFrame (not frame) so the
@@ -1201,7 +1343,10 @@ final class VirtualCursorPanel: NSPanel {
         // Outline (white halo) — slightly larger than the cursor, sits behind.
         let outlineSize = Self.cursorSize + Self.outlinePadding * 2
         outlineLayer.bounds = CGRect(x: 0, y: 0, width: outlineSize, height: outlineSize)
-        outlineLayer.contents = tintedCursorImage(color: .white, scale: scale)
+        // Outline tinted navy (matches the app icon's squircle) instead
+        // of pure white. This reads as a branded contrast halo rather
+        // than a generic system highlight.
+        outlineLayer.contents = tintedCursorImage(color: Self.brandNavy, scale: scale)
         outlineLayer.contentsGravity = .resizeAspect
         outlineLayer.contentsScale = scale
         outlineLayer.opacity = 0
@@ -1215,7 +1360,7 @@ final class VirtualCursorPanel: NSPanel {
         // Cursor glyph — real macOS arrow tinted Tama orange at 70% opacity.
         cursorLayer.bounds = CGRect(x: 0, y: 0, width: Self.cursorSize, height: Self.cursorSize)
         cursorLayer.contents = tintedCursorImage(
-            color: NSColor.systemOrange.withAlphaComponent(0.9),
+            color: Self.brandAmber.withAlphaComponent(0.95),
             scale: scale
         )
         cursorLayer.contentsGravity = .resizeAspect
@@ -1224,13 +1369,69 @@ final class VirtualCursorPanel: NSPanel {
         cursorLayer.anchorPoint = anchorForArrowTip()
         rootLayer.addSublayer(cursorLayer)
 
-        // Pulse ring.
-        pulseLayer.fillColor = NSColor.clear.cgColor
-        pulseLayer.strokeColor = NSColor.systemOrange.cgColor
-        pulseLayer.lineWidth = 3
-        pulseLayer.contentsScale = scale
-        pulseLayer.opacity = 0
-        rootLayer.addSublayer(pulseLayer)
+        // Pulse rings (triple ripple). All three share the same look and
+        // are fired with staggered `beginTime` offsets in
+        // `pulseAtCurrentPosition` to produce a radar/sonar effect.
+        for layer in [pulseLayer, pulseLayer2, pulseLayer3] {
+            layer.fillColor = NSColor.clear.cgColor
+            layer.strokeColor = Self.brandAmber.cgColor
+            layer.lineWidth = 3
+            layer.contentsScale = scale
+            layer.opacity = 0
+            rootLayer.addSublayer(layer)
+        }
+    }
+
+    /// Configure the persistent halo + one-shot spotlight overlay. Called
+    /// from `init` after the overlay + cursor layers so the halo sits just
+    /// BELOW the cursor glyph, and the spotlight fade sits at the BOTTOM
+    /// of the panel's layer tree (everything else paints on top of it).
+    private func configureAttentionLayers() {
+        guard let rootLayer = contentView?.layer else { return }
+        let scale = backingScaleFactor()
+
+        // Spotlight: full-bounds black rect with a circular cutout. The
+        // `.evenOdd` fill rule makes the inner circle subtract from the
+        // outer rect (same pattern used by Mouseposé and the Instructions
+        // coach-mark library). Starts hidden; `flashSpotlight` fades it in
+        // and back out on arrival.
+        spotlightLayer.frame = rootLayer.bounds
+        spotlightLayer.fillColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        spotlightLayer.fillRule = .evenOdd
+        spotlightLayer.contentsScale = scale
+        spotlightLayer.opacity = 0
+        // Insert at the BOTTOM so it doesn't eclipse any overlays already
+        // configured above it (highlight, arrow, countdown, etc.).
+        rootLayer.insertSublayer(spotlightLayer, at: 0)
+
+        // Halo: stroked ring with a generous orange shadow. The shadow IS
+        // the glow — CALayer's shadow renderer blurs it outward into a
+        // soft luminous halo, saving us from the 4-layer manual ring stack
+        // that `RingHighlight.swift` uses (same visual result, one layer).
+        haloLayer.fillColor = NSColor.clear.cgColor
+        haloLayer.strokeColor = Self.brandAmber.withAlphaComponent(0.85).cgColor
+        haloLayer.lineWidth = 3
+        haloLayer.shadowColor = Self.brandAmber.cgColor
+        haloLayer.shadowOpacity = 0.95
+        haloLayer.shadowRadius = 10
+        haloLayer.shadowOffset = .zero
+        haloLayer.contentsScale = scale
+        haloLayer.opacity = 0
+        haloLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        // Halo sits directly under the cursor glyph — added to root layer
+        // AFTER `configureLayers()` has inserted outline/cursor, but we
+        // explicitly insert below the outline so the arrow still reads on
+        // top. Outline is the first cursor sublayer; insert halo at its
+        // index so the halo paints first.
+        if let outlineIdx = rootLayer.sublayers?.firstIndex(of: outlineLayer) {
+            rootLayer.insertSublayer(haloLayer, at: UInt32(outlineIdx))
+        } else {
+            rootLayer.addSublayer(haloLayer)
+        }
+
+        let ringSize: CGFloat = Self.cursorSize * 1.05
+        haloLayer.bounds = CGRect(x: 0, y: 0, width: ringSize, height: ringSize)
+        haloLayer.path = CGPath(ellipseIn: haloLayer.bounds, transform: nil)
     }
 
     /// Adds the highlight / arrow / countdown layers and configures their
@@ -1242,8 +1443,8 @@ final class VirtualCursorPanel: NSPanel {
         let scale = backingScaleFactor()
 
         // Highlight — dashed orange outline with a faint orange tint fill.
-        highlightLayer.fillColor = NSColor.systemOrange.withAlphaComponent(0.08).cgColor
-        highlightLayer.strokeColor = NSColor.systemOrange.withAlphaComponent(0.95).cgColor
+        highlightLayer.fillColor = Self.brandAmber.withAlphaComponent(0.10).cgColor
+        highlightLayer.strokeColor = Self.brandAmber.withAlphaComponent(0.95).cgColor
         highlightLayer.lineWidth = 3
         highlightLayer.lineDashPattern = [8, 4]
         highlightLayer.contentsScale = scale
@@ -1251,7 +1452,7 @@ final class VirtualCursorPanel: NSPanel {
         rootLayer.addSublayer(highlightLayer)
 
         // Arrow — filled orange with a thin dark edge for contrast.
-        arrowLayer.fillColor = NSColor.systemOrange.withAlphaComponent(0.9).cgColor
+        arrowLayer.fillColor = Self.brandAmber.withAlphaComponent(0.95).cgColor
         arrowLayer.strokeColor = NSColor.black.withAlphaComponent(0.35).cgColor
         arrowLayer.lineWidth = 0.5
         arrowLayer.lineJoin = .round
@@ -1261,14 +1462,14 @@ final class VirtualCursorPanel: NSPanel {
 
         // Countdown — hollow ring (track) + depleting ring on top.
         countdownTrackLayer.fillColor = NSColor.clear.cgColor
-        countdownTrackLayer.strokeColor = NSColor.systemOrange.withAlphaComponent(0.25).cgColor
+        countdownTrackLayer.strokeColor = Self.brandAmber.withAlphaComponent(0.25).cgColor
         countdownTrackLayer.lineWidth = 4
         countdownTrackLayer.contentsScale = scale
         countdownTrackLayer.opacity = 0
         rootLayer.addSublayer(countdownTrackLayer)
 
         countdownLayer.fillColor = NSColor.clear.cgColor
-        countdownLayer.strokeColor = NSColor.systemOrange.cgColor
+        countdownLayer.strokeColor = Self.brandAmber.cgColor
         countdownLayer.lineWidth = 4
         countdownLayer.lineCap = .round
         countdownLayer.contentsScale = scale

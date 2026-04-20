@@ -40,6 +40,12 @@ final class VoiceService: @unchecked Sendable {
 
     enum State: Sendable {
         case idle
+        /// Engine + VP running, tap installed, but no recognition task attached
+        /// yet. Used to warm up Apple's Voice Processing IO so the AEC has time
+        /// to adapt before the user starts speaking. Without this warm-up the
+        /// first ~1s of user audio after a TTS greeting gets aggressively gated
+        /// by cold VP, making the mic feel unresponsive.
+        case prewarming
         case followUp // Capturing speech (hold-to-talk or follow-up)
     }
 
@@ -102,6 +108,10 @@ final class VoiceService: @unchecked Sendable {
     /// Timer that polls for silence to auto-finalize.
     private var silenceTimer: Timer?
 
+    /// VP mode the engine was prewarmed with, so `startFollowUpCapture` can
+    /// verify compatibility before reusing it.
+    private var prewarmedVoiceProcessing: Bool = false
+
     private init() {}
 
     // MARK: - Public
@@ -138,8 +148,15 @@ final class VoiceService: @unchecked Sendable {
         }
 
         logger.info("Starting speech capture")
-        generation += 1
-        haltPipeline()
+
+        // If we were prewarmed with matching VP settings, reuse the engine so
+        // Apple's Voice Processing IO keeps its already-adapted AEC state.
+        // Tearing it down and rebuilding would force another ~1s cold start.
+        let canReusePrewarm = state == .prewarming && prewarmedVoiceProcessing == voiceProcessing && audioEngine != nil
+        if !canReusePrewarm {
+            generation += 1
+            haltPipeline()
+        }
 
         silenceWindow = silenceDuration ?? defaultSilenceWindow
         state = .followUp
@@ -155,7 +172,9 @@ final class VoiceService: @unchecked Sendable {
 
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             logger.error("Speech recognizer not available")
-            state = .idle
+            if !canReusePrewarm { state = .idle } else { haltPipeline()
+                state = .idle
+            }
             return
         }
 
@@ -174,78 +193,16 @@ final class VoiceService: @unchecked Sendable {
             didMuteThisSession = false
         }
 
-        let engine = AVAudioEngine()
-        audioEngine = engine
-
-        let inputNode = engine.inputNode
-
-        // Enable Voice Processing IO for echo cancellation (AEC).
-        // Must be done BEFORE reading the format — VP changes the input format.
-        if voiceProcessing {
-            do {
-                try inputNode.setVoiceProcessingEnabled(true)
-                logger.info("Voice processing (AEC) enabled on input node")
-            } catch {
-                logger.error("Failed to enable voice processing: \(error.localizedDescription)")
+        if !canReusePrewarm {
+            guard setupCaptureEngine(voiceProcessing: voiceProcessing) else {
+                state = .idle
+                return
             }
-        }
-
-        let hwFormat = inputNode.outputFormat(forBus: 0)
-        logger.info("Input node format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
-
-        guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
-            logger.error("Invalid audio format")
-            audioEngine = nil
-            state = .idle
-            return
-        }
-
-        // VP may change the format to multi-channel. The speech recognizer
-        // needs mono audio, so force a 1-channel format at the same sample rate.
-        let recordingFormat: AVAudioFormat = if voiceProcessing, hwFormat.channelCount > 1,
-                                                let mono = AVAudioFormat(
-                                                    standardFormatWithSampleRate: hwFormat.sampleRate,
-                                                    channels: 1
-                                                )
-        {
-            mono
         } else {
-            hwFormat
-        }
-
-        if recordingFormat !== hwFormat {
-            logger.info("Using mono tap format: \(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch")
-        }
-
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(
-            onBus: 0,
-            bufferSize: 2048,
-            format: recordingFormat
-        ) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
-            guard let rms = Self.calculateRMS(buffer: buffer) else { return }
-            let sself = self
-            DispatchQueue.main.async { [weak sself] in
-                guard let sself, sself.state == .followUp else { return }
-                sself.noteAudioLevel(rms: rms)
-                let threshold = max(sself.minSpeechRMS, sself.noiseFloorRMS * sself.speechBoostFactor)
-                sself.onAudioLevelChanged?(min(1.0, max(0.0, rms / threshold)))
-            }
+            logger.info("Reusing prewarmed capture engine (VP already adapted)")
         }
 
         let currentGeneration = generation
-
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            logger.error("Failed to start audio engine: \(error.localizedDescription)")
-            onError?("Could not access microphone. It may be in use by another app.")
-            audioEngine = nil
-            state = .idle
-            return
-        }
 
         recognitionTask = speechRecognizer.recognitionTask(
             with: request
@@ -279,10 +236,119 @@ final class VoiceService: @unchecked Sendable {
         logger.info("Speech capture started (generation: \(currentGeneration))")
     }
 
+    /// Starts the audio engine with Voice Processing enabled but without
+    /// attaching a speech recognizer. Lets Apple's AEC adapt to the current
+    /// room/speaker acoustics so that when `startFollowUpCapture` is called
+    /// shortly after, the first user audio isn't gated by a cold VP filter.
+    ///
+    /// Idempotent: calling while already prewarmed with the same VP mode is a
+    /// no-op. If the service is already capturing (`.followUp`), does nothing.
+    ///
+    /// Does NOT mute system audio — the caller is expected to be playing
+    /// something (e.g. a greeting) through the output that VP should adapt to.
+    func prewarmCapture(voiceProcessing: Bool = true) {
+        guard state != .followUp else { return }
+        if state == .prewarming, prewarmedVoiceProcessing == voiceProcessing, audioEngine != nil {
+            return
+        }
+
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard micStatus == .authorized else {
+            logger.info("Skipping prewarm — microphone permission: \(micStatus.description)")
+            return
+        }
+
+        logger.info("Prewarming capture engine (VP=\(voiceProcessing))")
+        generation += 1
+        haltPipeline()
+
+        guard setupCaptureEngine(voiceProcessing: voiceProcessing) else { return }
+        state = .prewarming
+        prewarmedVoiceProcessing = voiceProcessing
+    }
+
+    /// Builds the AVAudioEngine with optional VP, installs the tap, and starts
+    /// the engine. Shared between `prewarmCapture` and `startFollowUpCapture`.
+    /// Returns `false` on failure (engine discarded, caller should bail out).
+    private func setupCaptureEngine(voiceProcessing: Bool) -> Bool {
+        let engine = AVAudioEngine()
+        audioEngine = engine
+
+        let inputNode = engine.inputNode
+
+        // Enable Voice Processing IO for echo cancellation (AEC).
+        // Must be done BEFORE reading the format — VP changes the input format.
+        if voiceProcessing {
+            do {
+                try inputNode.setVoiceProcessingEnabled(true)
+                logger.info("Voice processing (AEC) enabled on input node")
+            } catch {
+                logger.error("Failed to enable voice processing: \(error.localizedDescription)")
+            }
+        }
+
+        let hwFormat = inputNode.outputFormat(forBus: 0)
+        logger.info("Input node format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
+
+        guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
+            logger.error("Invalid audio format")
+            audioEngine = nil
+            return false
+        }
+
+        // VP may change the format to multi-channel. The speech recognizer
+        // needs mono audio, so force a 1-channel format at the same sample rate.
+        let recordingFormat: AVAudioFormat = if voiceProcessing, hwFormat.channelCount > 1,
+                                                let mono = AVAudioFormat(
+                                                    standardFormatWithSampleRate: hwFormat.sampleRate,
+                                                    channels: 1
+                                                )
+        {
+            mono
+        } else {
+            hwFormat
+        }
+
+        if recordingFormat !== hwFormat {
+            logger.info("Using mono tap format: \(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch")
+        }
+
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(
+            onBus: 0,
+            bufferSize: 2048,
+            format: recordingFormat
+        ) { [weak self] buffer, _ in
+            // During .prewarming the request is nil — buffers are harmlessly
+            // dropped, which is fine: VP only needs the engine running to adapt.
+            self?.recognitionRequest?.append(buffer)
+            guard let rms = Self.calculateRMS(buffer: buffer) else { return }
+            let sself = self
+            DispatchQueue.main.async { [weak sself] in
+                guard let sself, sself.state == .followUp else { return }
+                sself.noteAudioLevel(rms: rms)
+                let threshold = max(sself.minSpeechRMS, sself.noiseFloorRMS * sself.speechBoostFactor)
+                sself.onAudioLevelChanged?(min(1.0, max(0.0, rms / threshold)))
+            }
+        }
+
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            logger.error("Failed to start audio engine: \(error.localizedDescription)")
+            onError?("Could not access microphone. It may be in use by another app.")
+            audioEngine = nil
+            return false
+        }
+        return true
+    }
+
     /// Stops capture and returns to idle without invoking the callback.
     func stopFollowUpCapture() {
-        guard state == .followUp else { return }
-        logger.info("Stopping speech capture")
+        guard state == .followUp || state == .prewarming else { return }
+        // swiftformat:disable:next redundantSelf
+        logger.info("Stopping speech capture (was \(String(describing: self.state)))")
         generation += 1
         haltPipeline()
         state = .idle
@@ -357,6 +423,7 @@ final class VoiceService: @unchecked Sendable {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
+        prewarmedVoiceProcessing = false
 
         speechRecognizer = nil
 

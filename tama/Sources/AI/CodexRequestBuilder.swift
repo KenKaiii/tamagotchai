@@ -61,11 +61,21 @@ enum CodexRequestBuilder {
 
     /// Convert Anthropic-format messages to Codex input array.
     /// Internal so the test suite can exercise format conversion directly.
+    ///
+    /// Images in the MOST-RECENT image-bearing message are attached with
+    /// `detail: "original"` (the top vision tier, up to 6000px / 10.24M pixels).
+    /// This is what OpenAI's own `openai-cua-sample-app` reference ships for
+    /// GPT-5.4 computer use, and what their release notes credit with "strong
+    /// gains in localization ability, image understanding, and click accuracy."
+    /// Older screenshots in history fall back to `detail: "auto"` so we don't
+    /// pay the high-tier processing cost on every conversation turn.
     static func convertMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
         var input: [[String: Any]] = []
+        let latestImageIdx = indexOfLastMessageWithImage(messages)
 
-        for msg in messages {
+        for (idx, msg) in messages.enumerated() {
             guard let role = msg["role"] as? String else { continue }
+            let detail = idx == latestImageIdx ? "original" : "auto"
 
             // User messages with string content
             if role == "user", let content = msg["content"] as? String {
@@ -101,6 +111,7 @@ enum CodexRequestBuilder {
                         pendingMixed.append([
                             "type": "input_image",
                             "image_url": "data:\(mediaType);base64,\(data)",
+                            "detail": detail,
                         ])
                     } else if type == "tool_result",
                               let toolUseId = block["tool_use_id"] as? String
@@ -108,7 +119,8 @@ enum CodexRequestBuilder {
                         flushPending()
                         input.append(contentsOf: convertToolResult(
                             toolUseId: toolUseId,
-                            content: block["content"]
+                            content: block["content"],
+                            imageDetail: detail
                         ))
                     }
                 }
@@ -168,11 +180,37 @@ enum CodexRequestBuilder {
         return input
     }
 
+    /// Returns the index of the last message whose `content` contains at
+    /// least one `image` or `tool_result`-with-image block, or `-1` if none.
+    /// Used to decide which screenshots are the "current" ones that deserve
+    /// high-detail vision processing vs. stale history that can ride at auto.
+    private static func indexOfLastMessageWithImage(_ messages: [[String: Any]]) -> Int {
+        for idx in stride(from: messages.count - 1, through: 0, by: -1) {
+            guard let blocks = messages[idx]["content"] as? [[String: Any]] else { continue }
+            for block in blocks {
+                let type = block["type"] as? String
+                if type == "image" { return idx }
+                if type == "tool_result",
+                   let inner = block["content"] as? [[String: Any]],
+                   inner.contains(where: { $0["type"] as? String == "image" })
+                {
+                    return idx
+                }
+            }
+        }
+        return -1
+    }
+
     /// Convert a tool_result block's content to one or more Codex input items:
     /// a `function_call_output` with the text portion, plus an optional
     /// `role:"user"` message carrying any image blocks as `input_image` data
-    /// URLs.
-    private static func convertToolResult(toolUseId: String, content: Any?) -> [[String: Any]] {
+    /// URLs. `imageDetail` controls the vision tier — `"high"` for the current
+    /// screenshot, `"auto"` for stale ones still in history.
+    private static func convertToolResult(
+        toolUseId: String,
+        content: Any?,
+        imageDetail: String = "auto"
+    ) -> [[String: Any]] {
         // Extract just the call_id part (before the pipe).
         let callId = toolUseId.contains("|")
             ? String(toolUseId.split(separator: "|").first!)
@@ -207,6 +245,7 @@ enum CodexRequestBuilder {
                 imageItems.append([
                     "type": "input_image",
                     "image_url": "data:\(mediaType);base64,\(data)",
+                    "detail": imageDetail,
                 ])
             }
         }

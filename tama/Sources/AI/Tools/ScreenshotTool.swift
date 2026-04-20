@@ -40,15 +40,22 @@ final class ScreenshotTool: AgentTool {
     - If the active model can't see images the tool returns an error — relay it verbatim and stop.
     """
 
-    /// Cap output width at 2560px. Higher than the old 1920 cap so menu-bar
-    /// icons and toolbar buttons (~24pt / 48 native px) remain distinguishable
-    /// after downscale — at 1920 wide on a 14" retina MBP each icon was only
-    /// ~15px, which confused vision models trying to pick the right one. The
-    /// extra pixels cost ~2k more vision tokens per shot (negligible in practice)
-    /// but meaningfully improve pointing accuracy for `point`.
-    private static let maxWidth = 2560
-    /// JPEG default quality (0-100).
-    private static let defaultJPEGQuality = 85
+    /// Cap output width at 3072px — matches OpenAI's Responses API
+    /// `detail: "original"` tier (up to 6000px / 10.24M pixels), which is what
+    /// OpenAI's own `openai-cua-sample-app` reference uses for GPT-5.4 computer
+    /// use. OpenAI's release notes specifically credit `original`/`high` detail
+    /// with "strong gains in localization ability, image understanding, and
+    /// click accuracy" over the default compressed tier. At 3072 we ship the
+    /// full native retina capture of a 14" MBP (3024×1964) with no downscale,
+    /// so a 22pt menu-bar icon occupies ~44 pixels — double what the 2048 cap
+    /// gave the vision encoder.
+    private static let maxWidth = 3072
+    /// Fixed JPEG quality, retained for callers that still opt into JPEG. The
+    /// call path below now defaults to PNG (lossless) to match OpenAI's own
+    /// `openai-cua-sample-app` reference. JPEG-92 stays near-lossless for small
+    /// icons but PNG removes the last compression artifacts the vision encoder
+    /// can see on 22px menu-bar glyphs.
+    private static let jpegQuality = 92
 
     /// Returns the currently selected model. Injectable for tests so vision
     /// enforcement can be exercised deterministically without touching the
@@ -86,18 +93,11 @@ final class ScreenshotTool: AgentTool {
                 "display": [
                     "type": "integer",
                     "minimum": 0,
-                    "description": "0-based display index (default: main display).",
-                ],
-                "format": [
-                    "type": "string",
-                    "enum": ["png", "jpeg"],
-                    "description": "Image format. JPEG (default) is ~10x smaller than PNG.",
-                ],
-                "quality": [
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 100,
-                    "description": "JPEG quality 1-100 (default: 85). Ignored for PNG.",
+                    "description": "0-based display index. Omit this argument (uses main display). " +
+                        "Only pass a non-zero value if the user has explicitly confirmed they have " +
+                        "multiple displays AND they've told you the target is on a specific one. " +
+                        "Do NOT call this tool multiple times to 'check all displays' — the user has " +
+                        "ONE display by default.",
                 ],
             ],
             "required": [] as [String],
@@ -141,12 +141,14 @@ final class ScreenshotTool: AgentTool {
         }
 
         let displayIndex = args["display"] as? Int ?? 0
-        let format = (args["format"] as? String)?.lowercased() ?? "jpeg"
-        let quality = max(1, min(100, args["quality"] as? Int ?? Self.defaultJPEGQuality))
-
-        guard format == "jpeg" || format == "png" else {
-            throw ScreenshotToolError.captureFailed("Unsupported format: \(format)")
-        }
+        // Format and quality are intentionally NOT exposed to the model. PNG
+        // (lossless) matches OpenAI's own CUA sample app — they ship PNG +
+        // `detail: "original"` for GPT-5.4 computer use. Earlier we let the
+        // model pick format/quality; it started choosing JPEG-80 and small UI
+        // icons lost the edge detail the vision encoder needed, producing
+        // multi-centimetre cursor drift.
+        let format = "png"
+        let quality = Self.jpegQuality
 
         logger.info("Capturing screenshot: display=\(displayIndex), format=\(format), quality=\(quality)")
 
@@ -207,10 +209,24 @@ final class ScreenshotTool: AgentTool {
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
-        // Use the display's native pixel dimensions (already retina-aware on
-        // SCDisplay). We downscale below if it exceeds maxWidth.
-        config.width = display.width
-        config.height = display.height
+        // Capture at NATIVE pixel dimensions, not point dimensions.
+        //
+        // `SCDisplay.width` / `.height` return the display's size in POINTS on
+        // recent macOS (e.g. 1512×982 on a 14" MBP), not native pixels. If we
+        // use those directly, `SCStreamConfiguration` downsamples the capture by
+        // the display's backing scale factor — so a retina screen lands in the
+        // image at 1512×982 instead of its real 3024×1964, halving the
+        // resolution the vision model sees. That directly degrades pointing
+        // accuracy for small UI targets (menu-bar icons, dock items) because a
+        // 22pt icon only occupies ~22 image pixels instead of ~44.
+        //
+        // Scale by the matching NSScreen's `backingScaleFactor` so we capture at
+        // full retina resolution. The existing `downscaleIfNeeded` below caps
+        // the transmitted image at `maxWidth` (2560px) — so payload size stays
+        // bounded while the intermediate capture preserves all native detail.
+        let scale = Self.backingScaleFactor(for: display)
+        config.width = Int((Double(display.width) * scale).rounded())
+        config.height = Int((Double(display.height) * scale).rounded())
         config.showsCursor = false
         config.captureResolution = .best
 
@@ -254,15 +270,18 @@ final class ScreenshotTool: AgentTool {
 
         // Include both processed (what the model sees) and native (what the
         // screen actually is) dimensions so the agent can reason about scale
-        // when estimating small-target coordinates. Normalized fractions [0-1]
-        // apply identically to both, so `point` works regardless of which
-        // resolution the model reasons from.
+        // when estimating small-target coordinates. The 0–1000 integer grid
+        // is viewport-independent — same coords work regardless of display
+        // resolution — matching the pattern used by Gemini Computer Use,
+        // GLM-4.6V, UI-TARS, and AutoGLM.
         let scaleNote = nativeWidth == width
             ? ""
             : " — downscaled from \(nativeWidth)×\(nativeHeight) native pixels"
         let text = "Screenshot saved to \(filePath) " +
             "(\(width)×\(height)\(scaleNote), \(imageData.count) bytes). " +
-            "Coords for `point` are fractions of this image: (0,0) = top-left, (1,1) = bottom-right."
+            "Coords for `point`, `highlight`, `arrow`, `countdown` use a 0–1000 integer grid " +
+            "over this image: (0,0) = top-left, (1000,1000) = bottom-right. Output plain " +
+            "integers like x=523, y=210 — NOT fractions like 0.523."
         return ToolOutput(
             text: text,
             images: [ToolImage(mediaType: mediaType, data: imageData)]
@@ -270,6 +289,26 @@ final class ScreenshotTool: AgentTool {
     }
 
     // MARK: - Image Processing
+
+    /// Returns the `NSScreen.backingScaleFactor` for the `NSScreen` whose
+    /// CoreGraphics display ID matches this `SCDisplay`'s `displayID`.
+    /// Falls back to the main screen's scale, then to 2.0 (typical retina),
+    /// then to 1.0 if no screens are enumerable. Called on a background
+    /// thread during screenshot execution; reads `NSScreen.screens` which
+    /// is safe to access from any thread.
+    private static func backingScaleFactor(for display: SCDisplay) -> Double {
+        let targetID = display.displayID
+        if let screen = NSScreen.screens.first(where: { screen in
+            let num = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            return num?.uint32Value == targetID
+        }) {
+            return Double(screen.backingScaleFactor)
+        }
+        if let main = NSScreen.main {
+            return Double(main.backingScaleFactor)
+        }
+        return 2.0
+    }
 
     /// Downscale so width <= maxWidth, preserving aspect ratio. Returns the
     /// original image if it already fits.
@@ -312,6 +351,12 @@ final class ScreenshotTool: AgentTool {
 
     // MARK: - File I/O
 
+    /// Maximum number of screenshots kept on disk. Older captures are deleted
+    /// after each write so the folder can't grow unbounded across long sessions.
+    /// Ten is enough for the user to scrub back through a recent call without
+    /// hoarding hundreds of ~450KB files.
+    private static let maxRetainedScreenshots = 10
+
     @MainActor
     private func writeToDisk(_ data: Data, fileExt: String) -> String {
         let dir = PromptPanelController.screenshotsDirectory
@@ -333,7 +378,66 @@ final class ScreenshotTool: AgentTool {
         } catch {
             logger.error("Failed to write screenshot to disk: \(error.localizedDescription, privacy: .public)")
         }
+
+        pruneOldScreenshots(in: dir, keepLatest: Self.maxRetainedScreenshots)
         return filePath
+    }
+
+    /// Delete all but the `keepLatest` most-recent `screenshot_*` files in
+    /// `dir`. Sort key is creation date (stable even if the ISO8601-in-filename
+    /// sort order ever drifts). Errors are logged and swallowed — cleanup must
+    /// never fail the screenshot tool itself.
+    private func pruneOldScreenshots(in dir: String, keepLatest: Int) {
+        let url = URL(fileURLWithPath: dir)
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.creationDateKey, .isRegularFileKey]
+        let contents: [URL]
+        do {
+            contents = try fm.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            logger
+                .warning(
+                    "Screenshot prune: failed to list \(dir, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            return
+        }
+
+        // Only consider files we wrote — screenshot_*.{jpg,png}. Guards against
+        // accidentally deleting anything else that ends up in the folder.
+        let screenshots = contents.filter { file in
+            let name = file.lastPathComponent
+            guard name.hasPrefix("screenshot_") else { return false }
+            let ext = file.pathExtension.lowercased()
+            return ext == "jpg" || ext == "jpeg" || ext == "png"
+        }
+
+        guard screenshots.count > keepLatest else { return }
+
+        // Newest first by creation date; fall back to filename (ISO-8601
+        // prefix is lexically sortable) when creationDate is missing.
+        let sorted = screenshots.sorted { lhs, rhs in
+            let lDate = (try? lhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+            let rDate = (try? rhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+            if let lDate, let rDate { return lDate > rDate }
+            return lhs.lastPathComponent > rhs.lastPathComponent
+        }
+
+        let toDelete = sorted.dropFirst(keepLatest)
+        for file in toDelete {
+            do {
+                try fm.removeItem(at: file)
+            } catch {
+                logger
+                    .warning(
+                        "Screenshot prune: failed to delete \(file.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+            }
+        }
+        logger.info("Screenshot prune: kept \(keepLatest), deleted \(toDelete.count)")
     }
 }
 

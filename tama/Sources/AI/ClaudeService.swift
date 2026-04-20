@@ -77,6 +77,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String? = nil,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
@@ -95,6 +96,7 @@ final class ClaudeService {
                     messages: messages,
                     tools: tools,
                     systemPrompt: systemPrompt,
+                    useBasePrompt: useBasePrompt,
                     maxTokens: maxTokens,
                     onEvent: onEvent
                 )
@@ -142,6 +144,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
@@ -151,6 +154,7 @@ final class ClaudeService {
                 messages: messages,
                 tools: tools,
                 systemPrompt: systemPrompt,
+                useBasePrompt: useBasePrompt,
                 onEvent: onEvent
             )
         }
@@ -161,6 +165,7 @@ final class ClaudeService {
                 messages: messages,
                 tools: tools,
                 systemPrompt: systemPrompt,
+                useBasePrompt: useBasePrompt,
                 onEvent: onEvent
             )
         }
@@ -171,6 +176,7 @@ final class ClaudeService {
                 messages: messages,
                 tools: tools,
                 systemPrompt: systemPrompt,
+                useBasePrompt: useBasePrompt,
                 maxTokens: maxTokens,
                 onEvent: onEvent
             )
@@ -181,6 +187,7 @@ final class ClaudeService {
             messages: messages,
             tools: tools,
             systemPrompt: systemPrompt,
+            useBasePrompt: useBasePrompt,
             maxTokens: maxTokens,
             onEvent: onEvent
         )
@@ -188,7 +195,22 @@ final class ClaudeService {
 
     // MARK: - Dynamic Context
 
-    private func dynamicContext() -> String {
+    /// Static context included in the cached system-prompt prefix. Skills
+    /// change rarely and platform is constant — keeping them here lets the
+    /// Anthropic prompt cache hit across turns.
+    private func staticContext() -> String {
+        let skillsContext = SkillStore.shared.formatForPrompt()
+        return """
+        [environment]
+        platform: macOS
+
+        \(skillsContext)
+        """
+    }
+
+    /// Time-varying context that must NOT be cached. Kept as the final system
+    /// block so the cached prefix ends before this content.
+    private func dynamicTimestamp() -> String {
         let now = Date()
         let dateStr = now.formatted(
             .dateTime.weekday(.wide).month(.wide).day().year()
@@ -204,16 +226,21 @@ final class ClaudeService {
             ? "\(sign)\(h)"
             : String(format: "%@%d:%02d", sign, h, m)
 
-        let skillsContext = SkillStore.shared.formatForPrompt()
-
         return """
-        [current context]
+        [now]
         date: \(dateStr)
         time: \(timeStr)
         timezone: \(tz.identifier) (UTC\(offsetString))
-        platform: macOS
+        """
+    }
 
-        \(skillsContext)
+    /// Combined context for providers that don't support prompt caching —
+    /// OpenAI-compatible, Gemini, Codex. Anthropic uses the split variants above.
+    private func dynamicContext() -> String {
+        """
+        \(staticContext())
+
+        \(dynamicTimestamp())
         """
     }
 
@@ -224,6 +251,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
@@ -232,11 +260,13 @@ final class ClaudeService {
         }
 
         // Build system prompt with dynamic context
-        var fullSystemPrompt = baseSystemPrompt
+        var fullSystemPrompt = useBasePrompt ? baseSystemPrompt : ""
         if let extra = systemPrompt {
-            fullSystemPrompt += "\n\n" + extra
+            if !fullSystemPrompt.isEmpty { fullSystemPrompt += "\n\n" }
+            fullSystemPrompt += extra
         }
-        fullSystemPrompt += "\n\n" + dynamicContext()
+        if !fullSystemPrompt.isEmpty { fullSystemPrompt += "\n\n" }
+        fullSystemPrompt += dynamicContext()
 
         let request = try CodexRequestBuilder.buildRequest(
             token: token,
@@ -277,6 +307,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
         let token = try await ProviderStore.shared.validAccessToken(for: model.provider)
@@ -287,11 +318,13 @@ final class ClaudeService {
         }
 
         // Build system prompt with dynamic context
-        var fullSystemPrompt = baseSystemPrompt
+        var fullSystemPrompt = useBasePrompt ? baseSystemPrompt : ""
         if let extra = systemPrompt {
-            fullSystemPrompt += "\n\n" + extra
+            if !fullSystemPrompt.isEmpty { fullSystemPrompt += "\n\n" }
+            fullSystemPrompt += extra
         }
-        fullSystemPrompt += "\n\n" + dynamicContext()
+        if !fullSystemPrompt.isEmpty { fullSystemPrompt += "\n\n" }
+        fullSystemPrompt += dynamicContext()
 
         let request = try GeminiRequestBuilder.buildRequest(
             token: token,
@@ -332,6 +365,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
@@ -342,6 +376,7 @@ final class ClaudeService {
             messages: messages,
             tools: tools,
             systemPrompt: systemPrompt,
+            useBasePrompt: useBasePrompt,
             maxTokens: maxTokens
         )
 
@@ -374,29 +409,73 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]]?,
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil
     ) throws -> URLRequest {
         let url = URL(string: model.provider.baseURL)!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(token, forHTTPHeaderField: "x-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.setValue("tama/1.0", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 120
 
-        // Build system prompt with dynamic context
-        var fullSystemPrompt = baseSystemPrompt
-        if let extra = systemPrompt {
-            fullSystemPrompt += "\n\n" + extra
+        let isAnthropicOAuth = model.provider == .anthropic
+
+        if isAnthropicOAuth {
+            // Claude Code OAuth: bearer auth + beta headers + CLI identity.
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("claude-cli/2.1.75", forHTTPHeaderField: "User-Agent")
+            request.setValue("cli", forHTTPHeaderField: "x-app")
+            let betas = [
+                "claude-code-20250219",
+                "oauth-2025-04-20",
+                "fine-grained-tool-streaming-2025-05-14",
+                "interleaved-thinking-2025-05-14",
+            ].joined(separator: ",")
+            request.setValue(betas, forHTTPHeaderField: "anthropic-beta")
+        } else {
+            // MiniMax and other Anthropic-compatible providers: API-key auth.
+            request.setValue(token, forHTTPHeaderField: "x-api-key")
+            request.setValue("tama/1.0", forHTTPHeaderField: "User-Agent")
         }
-        fullSystemPrompt += "\n\n" + dynamicContext()
+
+        // Build the static (cacheable) system prompt — base + extra + skills.
+        // Date/time goes in a separate uncached block so cache stays warm.
+        var staticPrompt = useBasePrompt ? baseSystemPrompt : ""
+        if let extra = systemPrompt {
+            if !staticPrompt.isEmpty { staticPrompt += "\n\n" }
+            staticPrompt += extra
+        }
+        if !staticPrompt.isEmpty { staticPrompt += "\n\n" }
+        staticPrompt += staticContext()
+
+        // Anthropic system blocks: [identity?, static-with-cache, dynamic].
+        // `cache_control` on the last static block caches the prefix up to and
+        // including it (tools + prior system blocks + this block). The dynamic
+        // timestamp block that follows is deliberately uncached so it can
+        // refresh each turn without invalidating the prefix.
+        var systemBlocks: [[String: Any]] = []
+        if isAnthropicOAuth {
+            systemBlocks.append([
+                "type": "text",
+                "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+            ])
+        }
+        systemBlocks.append([
+            "type": "text",
+            "text": staticPrompt,
+            "cache_control": ["type": "ephemeral"],
+        ])
+        systemBlocks.append([
+            "type": "text",
+            "text": dynamicTimestamp(),
+        ])
 
         var body: [String: Any] = [
             "model": model.id,
             "max_tokens": maxTokens ?? model.maxOutputTokens,
             "stream": true,
-            "system": [["type": "text", "text": fullSystemPrompt]],
+            "system": systemBlocks,
             "messages": messages,
             "temperature": 1.0,
         ]
@@ -420,6 +499,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]],
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws -> ClaudeResponse {
@@ -430,6 +510,7 @@ final class ClaudeService {
             messages: messages,
             tools: tools,
             systemPrompt: systemPrompt,
+            useBasePrompt: useBasePrompt,
             maxTokens: maxTokens
         )
 
@@ -462,6 +543,7 @@ final class ClaudeService {
         messages: [[String: Any]],
         tools: [[String: Any]]?,
         systemPrompt: String?,
+        useBasePrompt: Bool = true,
         maxTokens: Int? = nil
     ) throws -> URLRequest {
         var baseURL = model.provider.baseURL
@@ -477,11 +559,13 @@ final class ClaudeService {
         request.setValue("tama/1.0", forHTTPHeaderField: "User-Agent")
 
         // Build system message content
-        var systemContent = baseSystemPrompt
+        var systemContent = useBasePrompt ? baseSystemPrompt : ""
         if let extra = systemPrompt {
-            systemContent += "\n\n" + extra
+            if !systemContent.isEmpty { systemContent += "\n\n" }
+            systemContent += extra
         }
-        systemContent += "\n\n" + dynamicContext()
+        if !systemContent.isEmpty { systemContent += "\n\n" }
+        systemContent += dynamicContext()
 
         // OpenAI format: system message as first message in array
         var openAIMessages: [[String: Any]] = [

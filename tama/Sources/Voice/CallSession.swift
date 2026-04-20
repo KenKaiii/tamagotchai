@@ -47,8 +47,17 @@ final class CallSession {
 
     // MARK: - Public API
 
-    /// Greeting spoken at the start of every call.
-    private static let greeting = "Hey, what can I help you with today?"
+    /// Greetings rotated at the start of each call so every call doesn't
+    /// open with the same line. Kept short so TTS time-to-first-audio stays low.
+    private static let greetings = [
+        "Hey, what's up?",
+        "Yo, what can I do for you?",
+        "Hey, what's on your mind?",
+        "What's up, what do you need?",
+        "Hey, I'm here — what's going on?",
+        "Yo, talk to me.",
+        "Hey hey, what can I help with?",
+    ]
 
     /// Starts the voice call — speaks a greeting, then begins listening.
     ///
@@ -87,12 +96,32 @@ final class CallSession {
     }
 
     /// Speaks a greeting via TTS, then starts listening once it finishes.
+    ///
+    /// While the greeting plays, the mic capture engine is prewarmed with
+    /// Voice Processing enabled. VP needs ~1s of real audio to adapt its AEC
+    /// — without this warm-up the first user utterance after the greeting
+    /// gets aggressively gated, making the mic feel unresponsive for 1–2s
+    /// even though the waveform UI is already live.
     private func speakGreeting() {
-        let greeting = Self.greeting
+        let greeting = Self.greetings.randomElement() ?? "Hey, what's up?"
         logger.info("[GREETING] Speaking: \"\(greeting)\"")
+
+        // Show grey (responding) bars while the agent speaks the greeting.
+        // Default is .listening (green), which would misrepresent the state.
+        NotchCallTimer.setMode(.responding)
+        NotchCallTimer.setAudioLevel(0)
 
         SpeechService.shared.beginStreaming()
         SpeechService.shared.feedChunk(greeting)
+
+        // Kick off mic prewarm in parallel with the greeting TTS. No mute —
+        // the greeting needs to be audible, and VP uses the speaker output as
+        // its reference signal to adapt the AEC. Deferred to the next runloop
+        // tick so the call-button UI transition renders first — AVAudioEngine
+        // start + setVoiceProcessingEnabled can block ~100–500ms on main.
+        Task { @MainActor in
+            VoiceService.shared.prewarmCapture(voiceProcessing: true)
+        }
 
         Task { @MainActor [weak self] in
             await SpeechService.shared.finishStreaming()
@@ -266,6 +295,7 @@ final class CallSession {
                 let updatedHistory = try await agentLoop.run(
                     messages: messages,
                     systemPrompt: buildCallSystemPrompt(),
+                    useBasePrompt: false,
                     maxTokens: 300,
                     onEvent: { [weak self] event in
                         MainActor.assumeIsolated {

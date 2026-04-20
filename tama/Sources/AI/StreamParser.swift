@@ -23,6 +23,14 @@ final class StreamParser {
     // Text accumulation
     private var textParts: [String] = []
 
+    // Usage accumulation — populated from message_start (input + cache) and
+    // updated from message_delta (final output_tokens).
+    private var inputTokens = 0
+    private var outputTokens = 0
+    private var cacheCreationInputTokens = 0
+    private var cacheReadInputTokens = 0
+    private var sawUsage = false
+
     init(onEvent: @escaping @Sendable (StreamEvent) -> Void) {
         self.onEvent = onEvent
     }
@@ -46,10 +54,30 @@ final class StreamParser {
                 // swiftformat:disable:next redundantSelf
                 "Stream done — \(textCount) text, \(toolCount) tool_use, stop=\(self.stopReason ?? "nil")"
             )
+
+        let usage: TokenUsage? = sawUsage ? TokenUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens,
+            cacheReadInputTokens: cacheReadInputTokens
+        ) : nil
+
+        if let usage {
+            let ratio = String(format: "%.1f", usage.cacheHitRatio)
+            logger.info(
+                """
+                Usage — input: \(usage.inputTokens), output: \(usage.outputTokens), \
+                cache_write: \(usage.cacheCreationInputTokens), cache_read: \(usage.cacheReadInputTokens) \
+                (cache hit: \(ratio, privacy: .public)%)
+                """
+            )
+        }
+
         return ClaudeResponse(
             content: contentBlocks,
             stopReason: stopReason,
-            reasoningContent: nil
+            reasoningContent: nil,
+            usage: usage
         )
     }
 
@@ -79,6 +107,8 @@ final class StreamParser {
         }
 
         switch currentEvent {
+        case "message_start":
+            handleMessageStart(obj)
         case "content_block_start":
             handleBlockStart(obj)
         case "content_block_delta":
@@ -175,11 +205,29 @@ final class StreamParser {
         }
     }
 
+    private func handleMessageStart(_ obj: [String: Any]) {
+        guard let message = obj["message"] as? [String: Any],
+              let usage = message["usage"] as? [String: Any]
+        else { return }
+        sawUsage = true
+        inputTokens = usage["input_tokens"] as? Int ?? 0
+        outputTokens = usage["output_tokens"] as? Int ?? 0
+        cacheCreationInputTokens = usage["cache_creation_input_tokens"] as? Int ?? 0
+        cacheReadInputTokens = usage["cache_read_input_tokens"] as? Int ?? 0
+    }
+
     private func handleMessageDelta(_ obj: [String: Any]) {
         if let delta = obj["delta"] as? [String: Any],
            let reason = delta["stop_reason"] as? String
         {
             stopReason = reason
+        }
+        // message_delta carries the final output_tokens count.
+        if let usage = obj["usage"] as? [String: Any] {
+            sawUsage = true
+            if let tokens = usage["output_tokens"] as? Int {
+                outputTokens = tokens
+            }
         }
     }
 

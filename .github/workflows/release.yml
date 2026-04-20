@@ -18,7 +18,7 @@ jobs:
       DEVELOPER_ID_NAME: ${{ secrets.DEVELOPER_ID_NAME }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select Xcode
         run: |
@@ -166,7 +166,7 @@ jobs:
           xcrun stapler staple "Tama-${GITHUB_REF_NAME}.dmg"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: Tama-*.dmg
           generate_release_notes: true

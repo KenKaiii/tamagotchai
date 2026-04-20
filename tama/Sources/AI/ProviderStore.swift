@@ -124,6 +124,14 @@ final class ProviderStore {
                     expiresAt: refreshed.expiresAt,
                     accountId: refreshed.projectId
                 )
+            case .anthropic:
+                let refreshed = try await AnthropicOAuth.shared.refresh(refreshToken: refreshToken)
+                newCred = ProviderCredential.oauth(
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken,
+                    expiresAt: refreshed.expiresAt,
+                    accountId: ""
+                )
             default:
                 throw ProviderStoreError.noCredentials(provider)
             }

@@ -291,6 +291,14 @@ struct LoginView: View {
                         expiresAt: result.expiresAt,
                         accountId: result.projectId
                     )
+                case .anthropic:
+                    let result = try await AnthropicOAuth.shared.authenticate()
+                    credential = ProviderCredential.oauth(
+                        accessToken: result.accessToken,
+                        refreshToken: result.refreshToken,
+                        expiresAt: result.expiresAt,
+                        accountId: ""
+                    )
                 default:
                     isAuthenticating = false
                     return

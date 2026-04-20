@@ -3,6 +3,7 @@ import Foundation
 /// Supported AI providers.
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case openai
+    case anthropic
     case gemini
     case moonshot
     case xiaomi
@@ -15,6 +16,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Moonshot"
         case .xiaomi: "Xiaomi"
         case .openai: "OpenAI"
+        case .anthropic: "Anthropic"
         case .gemini: "Google Gemini"
         case .minimax: "MiniMax"
         }
@@ -25,6 +27,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "Kimi K2.5"
         case .xiaomi: "MiMo-V2-Pro (Token Plan)"
         case .openai: "GPT-5.4, Codex"
+        case .anthropic: "Claude Sonnet 4.6 / Haiku 4.5 (via Claude account)"
         case .gemini: "Gemini 2.5 Pro / Flash (via Google account)"
         case .minimax: "MiniMax M2.7"
         }
@@ -36,6 +39,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/chat/completions"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1"
         case .openai: "https://chatgpt.com/backend-api/codex/responses"
+        case .anthropic: "https://api.anthropic.com/v1/messages"
         case .gemini: "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse"
         case .minimax: "https://api.minimax.io/anthropic/v1/messages"
         }
@@ -48,6 +52,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: "https://api.moonshot.ai/v1/models"
         case .xiaomi: "https://token-plan-sgp.xiaomimimo.com/v1/models"
         case .openai: ""
+        case .anthropic: ""
         case .gemini: ""
         case .minimax: "https://api.minimax.io/anthropic/v1/models"
         }
@@ -59,6 +64,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: true
         case .openai: false
+        case .anthropic: false
         case .gemini: false
         case .minimax: false
         }
@@ -67,6 +73,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     /// Whether this provider uses Anthropic-compatible API format.
     var usesAnthropicAPI: Bool {
         switch self {
+        case .anthropic: true
         case .minimax: true
         case .moonshot, .xiaomi, .openai, .gemini: false
         }
@@ -78,6 +85,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .anthropic: true
         case .gemini: true
         case .minimax: false
         }
@@ -89,6 +97,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: false
         case .xiaomi: false
         case .openai: true
+        case .anthropic: false
         case .gemini: false
         case .minimax: false
         }
@@ -98,7 +107,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     var usesGeminiAPI: Bool {
         switch self {
         case .gemini: true
-        case .moonshot, .xiaomi, .openai, .minimax: false
+        case .moonshot, .xiaomi, .openai, .anthropic, .minimax: false
         }
     }
 
@@ -110,6 +119,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .moonshot: true
         case .xiaomi: false // Xiaomi Token Plan doesn't support this param
         case .openai: false
+        case .anthropic: false
         case .gemini: false
         case .minimax: true
         }
@@ -213,6 +223,26 @@ enum ModelRegistry {
             supportsVision: false
         ),
         ModelInfo(
+            id: "claude-sonnet-4-6",
+            name: "Claude Sonnet 4.6",
+            provider: .anthropic,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 64000,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "claude-haiku-4-5-20251001",
+            name: "Claude Haiku 4.5",
+            provider: .anthropic,
+            contextWindow: 200_000,
+            maxOutputTokens: 64000,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
             id: "gemini-3-pro-preview",
             name: "Gemini 3 Pro (Preview)",
             provider: .gemini,
@@ -288,6 +318,8 @@ enum ModelRegistry {
             models.first { $0.id == "xiaomi-token-plan-sgp/mimo-v2-pro" }!
         case .openai:
             models.first { $0.id == "gpt-5.4-mini" }!
+        case .anthropic:
+            models.first { $0.id == "claude-sonnet-4-6" }!
         case .gemini:
             models.first { $0.id == "gemini-2.5-flash" }!
         case .minimax:

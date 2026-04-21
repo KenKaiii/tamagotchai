@@ -478,7 +478,7 @@ enum ScreenshotToolError: LocalizedError {
     ) -> String {
         let base = "\(currentModelName) can't see images. "
         if alternatives.isEmpty {
-            return base + "Add a vision-capable model (like Kimi K2.5 or GPT-5.4) in AI Settings, "
+            return base + "Add a vision-capable model (like Kimi K2.6 or GPT-5.4) in AI Settings, "
                 + "then switch to it."
         }
         let list = alternatives.joined(separator: ", ")

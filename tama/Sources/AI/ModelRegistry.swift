@@ -24,7 +24,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .moonshot: "Kimi K2.5"
+        case .moonshot: "Kimi K2.6"
         case .xiaomi: "MiMo-V2-Pro (Token Plan)"
         case .openai: "GPT-5.4, Codex"
         case .anthropic: "Claude Sonnet 4.6 / Haiku 4.5 (via Claude account)"
@@ -163,10 +163,10 @@ struct ModelInfo: Identifiable {
 enum ModelRegistry {
     static let models: [ModelInfo] = [
         ModelInfo(
-            id: "kimi-k2.5",
-            name: "Kimi K2.5",
+            id: "kimi-k2.6",
+            name: "Kimi K2.6",
             provider: .moonshot,
-            contextWindow: 200_000,
+            contextWindow: 262_144,
             maxOutputTokens: 16384,
             supportsTools: true,
             supportsThinking: true,
@@ -313,7 +313,7 @@ enum ModelRegistry {
     static func defaultModel(for provider: AIProvider) -> ModelInfo {
         switch provider {
         case .moonshot:
-            models.first { $0.id == "kimi-k2.5" }!
+            models.first { $0.id == "kimi-k2.6" }!
         case .xiaomi:
             models.first { $0.id == "xiaomi-token-plan-sgp/mimo-v2-pro" }!
         case .openai:

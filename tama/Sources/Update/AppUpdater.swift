@@ -247,17 +247,41 @@ final class AppUpdater {
 
         logger.info("Replacing \(destinationURL.path) with \(appSource.path)")
 
-        // Remove old app and copy new one
+        // **Atomic replacement is critical for TCC permission preservation.**
+        //
+        // The naive `removeItem` + `copyItem` approach makes macOS see the
+        // bundle disappear and a brand-new bundle appear at the same path.
+        // TCC on Sequoia (15+) treats that as an uninstall + reinstall and
+        // invalidates several permission bindings — most notably Screen
+        // Recording, but also commonly Accessibility, Full Disk Access,
+        // Microphone, and Speech Recognition. Users then have to re-grant
+        // every permission on every update.
+        //
+        // `FileManager.replaceItemAt` uses `renamex_np` / `renameat2` with
+        // RENAME_SWAP under the hood: the new bundle's inode atomically
+        // replaces the old one in a single syscall. macOS sees an in-place
+        // update, not a delete+create, and TCC keeps its bindings (the
+        // designated requirement still matches because we sign every
+        // release with the same Developer ID cert + team + bundle ID).
+        //
+        // This is the same primitive Sparkle, ElectronUpdater, and Apple's
+        // own NSWorkspace.installApplication use.
         do {
             if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
+                _ = try FileManager.default.replaceItemAt(
+                    destinationURL,
+                    withItemAt: appSource,
+                    backupItemName: nil,
+                    options: []
+                )
+            } else {
+                try FileManager.default.copyItem(at: appSource, to: destinationURL)
             }
-            try FileManager.default.copyItem(at: appSource, to: destinationURL)
         } catch {
             throw UpdateError.installFailed(error.localizedDescription)
         }
 
-        logger.info("Update installed successfully, relaunching…")
+        logger.info("Update installed atomically, relaunching…")
 
         // Relaunch via background shell
         relaunch(appPath: destinationURL.path)

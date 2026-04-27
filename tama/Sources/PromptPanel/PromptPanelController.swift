@@ -761,6 +761,23 @@ final class PromptPanelController {
                     saveCurrentSession()
                 }
                 self?.handleAgentDismissed()
+            } catch let error as AgentInterruptedError {
+                // The loop failed mid-run (typically a transient network drop).
+                // Persist the partial conversation — including any successful
+                // tool calls — so the next prompt has full context instead of
+                // starting blind.
+                if let self {
+                    self.completeAgentRun(
+                        updatedHistory: error.conversation,
+                        capturedSessionId: capturedSessionId,
+                        backgroundAccumulatedText: backgroundAccumulatedText
+                    )
+                    self.logger
+                        .error(
+                            "Agent loop interrupted, persisted \(error.conversation.count) msgs: \(error.localizedDescription, privacy: .public)"
+                        )
+                }
+                continuation.finish(throwing: error)
             } catch is CancellationError {
                 self?.logger.info("Agent task cancelled")
             } catch let urlError as URLError where urlError.code == .cancelled {
@@ -845,7 +862,12 @@ final class PromptPanelController {
             logger.error("Stream response error: \(error.localizedDescription, privacy: .public)")
             // Restore history to the state before this submit to avoid
             // corrupting it (the agent may have already updated it).
-            if conversationHistory.count > historyCountBeforeSubmit {
+            // Skip the rollback for AgentInterruptedError — the agent task
+            // has intentionally persisted partial progress that we want to
+            // keep so a follow-up prompt has full context.
+            if !(error is AgentInterruptedError),
+               conversationHistory.count > historyCountBeforeSubmit
+            {
                 conversationHistory.removeSubrange(historyCountBeforeSubmit...)
             }
             panel.hideToolIndicator()

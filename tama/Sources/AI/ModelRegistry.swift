@@ -26,7 +26,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .moonshot: "Kimi K2.6"
         case .xiaomi: "MiMo-V2-Pro (Token Plan)"
-        case .openai: "GPT-5.4, Codex"
+        case .openai: "GPT-5.5, Codex"
         case .anthropic: "Claude Sonnet 4.6 / Haiku 4.5 (via Claude account)"
         case .gemini: "Gemini 2.5 Pro / Flash (via Google account)"
         case .minimax: "MiniMax M2.7"
@@ -183,6 +183,26 @@ enum ModelRegistry {
             supportsVision: false
         ),
         ModelInfo(
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            provider: .openai,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "gpt-5.5-pro",
+            name: "GPT-5.5 Pro",
+            provider: .openai,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
             id: "gpt-5.4",
             name: "GPT-5.4",
             provider: .openai,
@@ -195,6 +215,16 @@ enum ModelRegistry {
         ModelInfo(
             id: "gpt-5.4-mini",
             name: "GPT-5.4 Mini",
+            provider: .openai,
+            contextWindow: 400_000,
+            maxOutputTokens: 128_000,
+            supportsTools: true,
+            supportsThinking: true,
+            supportsVision: true
+        ),
+        ModelInfo(
+            id: "gpt-5.4-nano",
+            name: "GPT-5.4 Nano",
             provider: .openai,
             contextWindow: 400_000,
             maxOutputTokens: 128_000,
@@ -317,7 +347,7 @@ enum ModelRegistry {
         case .xiaomi:
             models.first { $0.id == "xiaomi-token-plan-sgp/mimo-v2-pro" }!
         case .openai:
-            models.first { $0.id == "gpt-5.4-mini" }!
+            models.first { $0.id == "gpt-5.5" }!
         case .anthropic:
             models.first { $0.id == "claude-sonnet-4-6" }!
         case .gemini:

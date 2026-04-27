@@ -17,6 +17,18 @@ struct AgentDismissError: Error {
     let conversation: [[String: Any]]
 }
 
+/// Thrown when the agent loop is interrupted mid-run by an error (typically a
+/// transient network failure). Carries the conversation up to the last good
+/// state so the caller can persist partial progress before surfacing the error
+/// — otherwise the next user prompt would resume with no memory of the work
+/// already done.
+struct AgentInterruptedError: Error {
+    let conversation: [[String: Any]]
+    let underlying: Error
+
+    var localizedDescription: String { underlying.localizedDescription }
+}
+
 /// Runs the tool execution loop: send → tool_use → execute → tool_result → repeat.
 @MainActor
 final class AgentLoop {
@@ -64,6 +76,21 @@ final class AgentLoop {
             let requestStart = CFAbsoluteTimeGetCurrent()
             nonisolated(unsafe) var firstDeltaAt: CFAbsoluteTime?
             nonisolated(unsafe) var deltaCount = 0
+            let sendEvent: @Sendable (StreamEvent) -> Void = { event in
+                if case let .textDelta(text) = event {
+                    if firstDeltaAt == nil {
+                        firstDeltaAt = CFAbsoluteTimeGetCurrent()
+                    }
+                    deltaCount += 1
+                    onEvent(.textDelta(text))
+                }
+                if case let .toolUseStart(id, name) = event {
+                    if name != "dismiss" {
+                        onEvent(.toolStart(name: name, id: id))
+                    }
+                }
+            }
+
             let response: ClaudeResponse
             do {
                 response = try await claude.sendWithTools(
@@ -72,28 +99,44 @@ final class AgentLoop {
                     systemPrompt: systemPrompt,
                     useBasePrompt: useBasePrompt,
                     maxTokens: maxTokens,
-                    onEvent: { event in
-                        if case let .textDelta(text) = event {
-                            if firstDeltaAt == nil {
-                                firstDeltaAt = CFAbsoluteTimeGetCurrent()
-                            }
-                            deltaCount += 1
-                            onEvent(.textDelta(text))
-                        }
-                        if case let .toolUseStart(id, name) = event {
-                            if name != "dismiss" {
-                                onEvent(.toolStart(name: name, id: id))
-                            }
-                        }
-                    }
+                    onEvent: sendEvent
                 )
             } catch {
                 let elapsed = Int((CFAbsoluteTimeGetCurrent() - requestStart) * 1000)
-                logger
-                    .error(
-                        "✗ sendWithTools failed on turn \(turn + 1) after \(elapsed)ms: \(error.localizedDescription, privacy: .public)"
-                    )
-                throw error
+                // Retry once for transient network errors. The underlying
+                // URLSession stream sometimes drops on long agent runs;
+                // a single retry recovers most cases without surfacing an
+                // error to the user or losing partial progress.
+                if Self.isTransientNetworkError(error), !Task.isCancelled {
+                    logger
+                        .warning(
+                            "⚠️ Turn \(turn + 1) transient failure after \(elapsed)ms, retrying: \(error.localizedDescription, privacy: .public)"
+                        )
+                    try? await Task.sleep(for: .milliseconds(500))
+                    do {
+                        response = try await claude.sendWithTools(
+                            messages: conversation,
+                            tools: tools,
+                            systemPrompt: systemPrompt,
+                            useBasePrompt: useBasePrompt,
+                            maxTokens: maxTokens,
+                            onEvent: sendEvent
+                        )
+                    } catch {
+                        let retryElapsed = Int((CFAbsoluteTimeGetCurrent() - requestStart) * 1000)
+                        logger
+                            .error(
+                                "✗ sendWithTools retry failed on turn \(turn + 1) after \(retryElapsed)ms: \(error.localizedDescription, privacy: .public)"
+                            )
+                        throw AgentInterruptedError(conversation: conversation, underlying: error)
+                    }
+                } else {
+                    logger
+                        .error(
+                            "✗ sendWithTools failed on turn \(turn + 1) after \(elapsed)ms: \(error.localizedDescription, privacy: .public)"
+                        )
+                    throw AgentInterruptedError(conversation: conversation, underlying: error)
+                }
             }
 
             let totalMs = Int((CFAbsoluteTimeGetCurrent() - requestStart) * 1000)
@@ -173,6 +216,23 @@ final class AgentLoop {
     }
 
     // MARK: - Private Helpers
+
+    /// Returns true for URLSession errors that commonly resolve on retry.
+    private static func isTransientNetworkError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .networkConnectionLost,
+             .timedOut,
+             .notConnectedToInternet,
+             .dataNotAllowed,
+             .dnsLookupFailed,
+             .cannotConnectToHost,
+             .cannotFindHost:
+            return true
+        default:
+            return false
+        }
+    }
 
     private func buildAssistantContent(
         from response: ClaudeResponse

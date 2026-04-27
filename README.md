@@ -15,7 +15,7 @@
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
 
-**Tama Agent** is a macOS app that puts an AI assistant in your menu bar. Press ⌥ + Space and a floating panel pops up over whatever you're doing. Ask it questions, tell it to do things on your computer, talk to it with your voice, or set up automations that run on a schedule. Choose from multiple AI models — GPT-5.4, Codex, Kimi K2.5, MiniMax M2.7, MiMo-V2-Pro, and more.
+**Tama Agent** is a macOS app that puts an AI assistant in your menu bar. Press ⌥ + Space and a floating panel pops up over whatever you're doing. Ask it questions, tell it to do things on your computer, talk to it with your voice, or set up automations that run on a schedule. Choose from multiple AI models — GPT-5.5, Codex, Kimi K2.6, MiniMax M2.7, MiMo-V2-Pro, and more.
 
 No dock icon. No browser tab. Just a lightweight assistant that's always one hotkey away.
 
@@ -55,13 +55,13 @@ Set up reminders that show up as native macOS notifications. Or create routines 
 - "Every morning at 9am, check the weather and give me a summary"
 - "Run this script every Friday at 5pm"
 
-### 8 models across 4 providers
+### Multiple models across providers
 Pick the AI that works best for you:
 
 | Provider | Models |
 |----------|--------|
-| **OpenAI** | GPT-5.4, GPT-5.4 Mini, GPT-5.3 Codex, Codex Mini |
-| **Moonshot** | Kimi K2.5 |
+| **OpenAI** | GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.4 Mini, GPT-5.4 Nano, GPT-5.3 Codex, Codex Mini |
+| **Moonshot** | Kimi K2.6 |
 | **MiniMax** | M2.7, M2.7 Highspeed |
 | **Xiaomi** | MiMo-V2-Pro |
 

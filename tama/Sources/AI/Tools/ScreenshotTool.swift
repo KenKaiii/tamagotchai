@@ -11,12 +11,12 @@ private let logger = Logger(
 
 /// Agent tool that captures a full-screen screenshot and attaches it to the
 /// model's context (for vision-capable models). The image is also written to
-/// `~/Documents/Tama/Screenshots/` for the user to inspect.
+/// the workspace's `Screenshots/` folder for the user to inspect.
 final class ScreenshotTool: AgentTool {
     let name = "screenshot"
     let description = """
     Capture the user's screen and attach the image to your context so you can literally see what \
-    they're looking at. Saves to ~/Documents/Tama/Screenshots/.
+    they're looking at. Saves to the workspace's Screenshots/ folder.
 
     ## When to use this tool (call it proactively, don't wait to be asked)
 

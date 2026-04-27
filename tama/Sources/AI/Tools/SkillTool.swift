@@ -7,7 +7,7 @@ private let logger = Logger(
 )
 
 /// A tool that allows the agent to invoke skills by name.
-/// Skills are reusable prompt templates stored in ~/Documents/Tama/.gg/skills/
+/// Skills are reusable prompt templates stored in <workspace>/.gg/skills/
 struct SkillTool: AgentTool {
     let name = "skill"
     let description = """

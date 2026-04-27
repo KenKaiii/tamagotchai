@@ -153,31 +153,6 @@ final class PermissionsChecker {
         NSWorkspace.shared.open(url)
     }
 
-    // MARK: - Documents Folder
-
-    private var lastDocumentsFolderState: Bool?
-
-    /// Checks if the app can access ~/Documents by testing readability.
-    func isDocumentsFolderGranted() -> Bool {
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let granted = FileManager.default.isReadableFile(atPath: documentsURL.path)
-        if lastDocumentsFolderState != granted {
-            lastDocumentsFolderState = granted
-            logger.info("Documents Folder permission: \(granted ? "granted" : "denied")")
-        }
-        return granted
-    }
-
-    /// Triggers the TCC prompt by accessing ~/Documents/Tama via ensureWorkspace().
-    func requestDocumentsFolderAccess() {
-        _ = PromptPanelController.ensureWorkspace()
-    }
-
-    func openFilesAndFoldersSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")!
-        NSWorkspace.shared.open(url)
-    }
-
     // MARK: - Microphone
 
     func isMicrophoneGranted() -> Bool {
@@ -256,17 +231,53 @@ final class PermissionsChecker {
 
     // MARK: - Screen Recording
 
-    /// Returns true if the app has Screen Recording permission. Uses
-    /// `CGPreflightScreenCaptureAccess` so the system dialog is never shown.
-    /// Note: this value is cached by the system within a process lifetime, so
-    /// revocation may not be reflected until restart.
+    /// Returns true if the app has Screen Recording permission.
+    ///
+    /// `CGPreflightScreenCaptureAccess()` caches its result for the lifetime
+    /// of the process, so once it has returned `false` it keeps doing so even
+    /// after the user grants permission in System Settings — users see the
+    /// row stuck on "denied" until they restart. To reflect the live TCC
+    /// state we probe `CGWindowListCopyWindowInfo` for a non-owned window
+    /// whose title we can read: only apps with Screen Recording granted are
+    /// allowed to see other processes' window titles. If no suitable window
+    /// exists (rare) we fall back to the preflight call. Same pattern used
+    /// by Ice, Thaw, and other production menu-bar apps.
     func isScreenRecordingGranted() -> Bool {
-        let granted = CGPreflightScreenCaptureAccess()
+        let granted = liveScreenRecordingCheck()
         if lastScreenRecordingState != granted {
             lastScreenRecordingState = granted
             logger.info("Screen Recording permission: \(granted ? "granted" : "denied")")
         }
         return granted
+    }
+
+    private func liveScreenRecordingCheck() -> Bool {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let options: CGWindowListOption = [.excludeDesktopElements, .optionOnScreenOnly]
+        guard let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return CGPreflightScreenCaptureAccess()
+        }
+        var sawForeignWindow = false
+        for window in windows {
+            guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID else { continue }
+            // Skip system-owned windows (Dock, WindowServer, etc.) that expose
+            // titles regardless of TCC state.
+            if let owner = window[kCGWindowOwnerName as String] as? String,
+               owner == "Window Server" || owner == "Dock" || owner == "SystemUIServer"
+            {
+                continue
+            }
+            sawForeignWindow = true
+            if window[kCGWindowName as String] is String {
+                return true
+            }
+        }
+        // No third-party windows on screen at all — can't distinguish, defer
+        // to the (possibly stale) preflight value.
+        if !sawForeignWindow {
+            return CGPreflightScreenCaptureAccess()
+        }
+        return false
     }
 
     /// Triggers the system Screen Recording prompt the first time the app

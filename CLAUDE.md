@@ -78,9 +78,15 @@ Tama/Sources/
 
 ## Build & Quality Commands
 
+**To run / launch / "run dev" / build-and-run, ALWAYS use `./scripts/dev.sh`.** Never `open` the DerivedData `.app` directly and never tell the user to run from Xcode. The script builds, installs to `~/Applications/Tama.app` (a stable path so TCC permissions persist across rebuilds), and launches. Running from DerivedData causes permissions to appear "reset" on every rebuild because macOS keys TCC to the binary path + cdhash.
+
 ```bash
+./scripts/dev.sh                # build + install to ~/Applications/Tama.app + launch (default for "run")
+./scripts/dev.sh --no-build     # relaunch the installed copy without rebuilding
+./scripts/dev.sh --reset-tcc    # nuke Tama's TCC entries (forces fresh permission prompts)
+
 xcodegen generate                                              # Regenerate .xcodeproj from project.yml
-xcodebuild -project Tama.xcodeproj -scheme Tama -configuration Debug build  # Build
+xcodebuild -project Tama.xcodeproj -scheme Tama -configuration Debug build  # Build only (no install / launch)
 swiftlint lint --config .swiftlint.yml                         # Lint
 swiftformat --lint --config .swiftformat Tama/Sources          # Format check
 swiftformat --config .swiftformat Tama/Sources                 # Format auto-fix

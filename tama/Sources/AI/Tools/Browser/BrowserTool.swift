@@ -266,7 +266,7 @@ final class BrowserTool: AgentTool {
         return result
     }
 
-    /// Take a screenshot of the page and save it to ~/Documents/Tama/Screenshots/.
+    /// Take a screenshot of the page and save it to the workspace's Screenshots/ folder.
     private func screenshot(connection: CDPConnection) async throws -> String {
         // Set a reasonable viewport so screenshots aren't tiny (headless default is ~800x600).
         _ = try? await connection.send(method: "Emulation.setDeviceMetricsOverride", params: [

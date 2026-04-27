@@ -137,7 +137,7 @@ final class SkillStore {
         return """
         ## Skills
 
-        Skills are reusable prompt templates stored as Markdown files in `~/Documents/Tama/.gg/skills/`.
+        Skills are reusable prompt templates stored as Markdown files in the workspace under `.gg/skills/`.
 
         **Installing skills:** If a user wants to add a skill from GitHub or elsewhere, create a `.md` file
         in that folder with YAML frontmatter (name, description) followed by the skill instructions.
@@ -148,16 +148,10 @@ final class SkillStore {
         """
     }
 
-    /// Returns the path to the skills directory: ~/Documents/Tama/.gg/skills
+    /// Returns the path to the skills directory inside the workspace: <workspace>/.gg/skills
     private static func skillsDirectory() throws -> URL {
-        let documents = try FileManager.default.url(
-            for: .documentDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let dir = documents
-            .appendingPathComponent("Tama", isDirectory: true)
+        let workspace = URL(fileURLWithPath: PromptPanelController.ensureWorkspace())
+        let dir = workspace
             .appendingPathComponent(".gg", isDirectory: true)
             .appendingPathComponent("skills", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

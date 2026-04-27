@@ -26,10 +26,16 @@ final class PromptPanelController {
     private var currentTab: SessionTab = .chats
     private var dismissObserver: NSObjectProtocol?
 
-    /// Returns ~/Documents/Tama, creating it (and the Screenshots subdirectory) if needed.
+    /// Returns the workspace root, creating it (and the Screenshots subdirectory) if needed.
+    ///
+    /// The workspace lives under `~/Library/Application Support/Tama/Workspace/` rather
+    /// than `~/Documents/Tama` because Application Support is **not** TCC-protected for
+    /// non-sandboxed apps — macOS never prompts the user for access, and reinstalls or
+    /// signature changes don't trigger fresh "allow access" dialogs. Putting the
+    /// workspace under Documents would re-prompt every time the binary signature
+    /// changes (Debug ↔ Release ↔ CI build), which is a poor UX.
     static func ensureWorkspace() -> String {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let workspace = docs.appendingPathComponent("Tama")
+        let workspace = workspaceURL()
         if !FileManager.default.fileExists(atPath: workspace.path) {
             try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         }
@@ -42,8 +48,13 @@ final class PromptPanelController {
 
     /// The path to the Screenshots directory inside the workspace.
     static var screenshotsDirectory: String {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent("Tama/Screenshots").path
+        workspaceURL().appendingPathComponent("Screenshots").path
+    }
+
+    private static func workspaceURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("Tama", isDirectory: true)
+            .appendingPathComponent("Workspace", isDirectory: true)
     }
 
     // MARK: - Public

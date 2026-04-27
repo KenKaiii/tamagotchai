@@ -33,7 +33,6 @@ struct OnboardingView: View {
     @State private var speechGranted = false
     @State private var appManagementGranted = false
     @State private var notificationsGranted = false
-    @State private var documentsFolderGranted = false
     @State private var screenRecordingGranted = false
     @State private var permissionPollTimer: Timer?
     @State private var axObserver: NSObjectProtocol?
@@ -201,21 +200,6 @@ struct OnboardingView: View {
                 ) {
                     OnboardingController.yieldToSystemUI()
                     PermissionsChecker.shared.openFullDiskAccessSettings()
-                }
-
-                Divider().opacity(0.3).padding(.horizontal, 14)
-
-                permissionRow(
-                    title: "Documents Folder",
-                    description: "Tama stores files in ~/Documents/Tama",
-                    granted: documentsFolderGranted
-                ) {
-                    OnboardingController.yieldToSystemUI()
-                    PermissionsChecker.shared.requestDocumentsFolderAccess()
-                    // Refresh after a brief delay to pick up the new state
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        documentsFolderGranted = PermissionsChecker.shared.isDocumentsFolderGranted()
-                    }
                 }
 
                 Divider().opacity(0.3).padding(.horizontal, 14)
@@ -416,7 +400,6 @@ struct OnboardingView: View {
         let checker = PermissionsChecker.shared
         accessibilityGranted = checker.isAccessibilityGranted()
         fullDiskGranted = checker.isFullDiskAccessGranted()
-        documentsFolderGranted = checker.isDocumentsFolderGranted()
         microphoneGranted = checker.isMicrophoneGranted()
         speechGranted = checker.isSpeechRecognitionGranted()
         appManagementGranted = checker.isAppManagementGranted()

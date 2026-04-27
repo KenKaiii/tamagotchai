@@ -9,7 +9,6 @@ struct PermissionsView: View {
     @State private var speechGranted = false
     @State private var appManagementGranted = false
     @State private var notificationsGranted = false
-    @State private var documentsFolderGranted = false
     @State private var screenRecordingGranted = false
     @State private var permissionPollTimer: Timer?
     @State private var axObserver: NSObjectProtocol?
@@ -50,25 +49,6 @@ struct PermissionsView: View {
                     action: {
                         checker.openFullDiskAccessSettings()
                         checker.revealAppInFinder()
-                    }
-                )
-
-                Divider().opacity(0.3).padding(.horizontal, 14)
-
-                permissionRow(
-                    title: "Documents Folder",
-                    description: "Tama stores files in ~/Documents/Tama.",
-                    granted: documentsFolderGranted,
-                    action: {
-                        if documentsFolderGranted {
-                            checker.openFilesAndFoldersSettings()
-                        } else {
-                            checker.requestDocumentsFolderAccess()
-                            // Refresh after a brief delay to pick up the new state
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                documentsFolderGranted = checker.isDocumentsFolderGranted()
-                            }
-                        }
                     }
                 )
 
@@ -273,7 +253,6 @@ struct PermissionsView: View {
     private func refreshStatuses() {
         accessibilityGranted = checker.isAccessibilityGranted()
         fullDiskAccessGranted = checker.isFullDiskAccessGranted()
-        documentsFolderGranted = checker.isDocumentsFolderGranted()
         microphoneGranted = checker.isMicrophoneGranted()
         speechGranted = checker.isSpeechRecognitionGranted()
         appManagementGranted = checker.isAppManagementGranted()

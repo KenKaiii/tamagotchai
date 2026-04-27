@@ -156,6 +156,7 @@
 		EF53CD3D1196787D5EDAA228 /* AgentLoopImagePackagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2040C40C4DEFD4274E3EA735 /* AgentLoopImagePackagingTests.swift */; };
 		F1A5B43255EFF60E0A27AF7D /* ModelRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27346B8DC36B87921711FC2C /* ModelRegistry.swift */; };
 		F2BFC3932201C5761288DF3E /* BashToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EEF45A79FB5C41775E47CC9 /* BashToolTests.swift */; };
+		F3088E39B4D698581C3ED2C5 /* VirtualNotch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 572548E11F98CA6D235B366F /* VirtualNotch.swift */; };
 		FA6EAB03B72D959986CB1549 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C005F78A77530A4204309D22 /* UpdateView.swift */; };
 		FAB5F04C57BAF3D56B5AC2D9 /* MascotState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5024A2FE1F0572622CBD589A /* MascotState.swift */; };
 		FB267DAD6A173D3FD7492BE8 /* WordTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 931CA9CF67CE115BE13DD9FF /* WordTiming.swift */; };
@@ -252,6 +253,7 @@
 		524A57012550F1FB19D9E604 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		53C4C4A63AFCCD1ED7C01C4E /* RoutineListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineListView.swift; sourceTree = "<group>"; };
 		55003A7865F98271C0D0499E /* TaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListView.swift; sourceTree = "<group>"; };
+		572548E11F98CA6D235B366F /* VirtualNotch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualNotch.swift; sourceTree = "<group>"; };
 		57CA6FAF0DB5C7D2F9C43DCB /* PermissionsChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsChecker.swift; sourceTree = "<group>"; };
 		57F1E2471842ABD8131A6FD5 /* StreamParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamParser.swift; sourceTree = "<group>"; };
 		58EAFF524A6B6D962EAF988B /* LoginWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginWindowController.swift; sourceTree = "<group>"; };
@@ -746,6 +748,7 @@
 				D339201F4BB4EF66AE8B18AA /* NotchShape.swift */,
 				49A16FE12DF8079043A80BE5 /* NotificationDetailPanel.swift */,
 				C576A7005B7596D8A2B4C1A5 /* TestNotificationCoordinator.swift */,
+				572548E11F98CA6D235B366F /* VirtualNotch.swift */,
 			);
 			path = Notifications;
 			sourceTree = "<group>";
@@ -1062,6 +1065,7 @@
 				6F856E718A785EF0818F435C /* ToolRowView.swift in Sources */,
 				FA6EAB03B72D959986CB1549 /* UpdateView.swift in Sources */,
 				D4B4AB31FA3CDAF2D05D09CE /* UpdateWindowController.swift in Sources */,
+				F3088E39B4D698581C3ED2C5 /* VirtualNotch.swift in Sources */,
 				45FDFCA1692CC99061DE32E5 /* VoiceService.swift in Sources */,
 				318B863DA4DB04F31E0BEF37 /* VoiceSettingsController.swift in Sources */,
 				9787F7E1C93997F9917ECB55 /* VoiceSettingsView.swift in Sources */,

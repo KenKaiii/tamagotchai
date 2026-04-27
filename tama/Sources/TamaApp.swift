@@ -119,13 +119,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Start clipboard monitoring for the Tools tab
         ClipboardMonitor.shared.start()
 
-        // Show the persistent "Call Tama" button next to the notch
+        // Draw a virtual notch so screen recordings (which don't capture the hardware notch)
+        // still show the notch silhouette behind the call wings.
+        VirtualNotch.show()
+
+        // Show the persistent call button next to the notch
         NotchCallButton.show()
     }
 
     func applicationWillTerminate(_: Notification) {
         logger.info("App terminating")
         NotchCallButton.hide()
+        VirtualNotch.hide()
         ClipboardMonitor.shared.stop()
         ScheduleStore.shared.stop()
         PromptPanelController.shared.unregister()

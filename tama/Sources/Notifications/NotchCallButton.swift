@@ -6,11 +6,12 @@ private let logger = Logger(
     category: "callbutton"
 )
 
-/// A persistent "Call Tama" button that extends seamlessly from the left side of the hardware notch.
+/// A persistent call button that extends seamlessly from the left side of the hardware notch.
 ///
-/// The button is drawn as a black wing shape whose right edge is flush with the notch,
-/// making it appear as a natural left-side extension of the notch itself. Uses a non-activating
-/// `NSPanel` so it never steals focus. On non-notch displays, falls back to a centered notch shape.
+/// The button is drawn as a compact black wing shape (icon-only) whose right edge is flush
+/// with the notch, making it appear as a natural left-side extension of the notch itself.
+/// Shows a white phone icon when idle and a red disconnect icon while a call is active.
+/// Uses a non-activating `NSPanel` so it never steals focus.
 @MainActor
 enum NotchCallButton {
     // MARK: - State
@@ -28,8 +29,9 @@ enum NotchCallButton {
 
     // MARK: - Constants
 
-    /// Width of the wing extension.
-    private static let wingWidth: CGFloat = 120
+    /// Width of the wing extension. Sized to fit just the icon plus corner curvature
+    /// with comfortable padding on the left where the bottom-corner flare lives.
+    private static let wingWidth: CGFloat = 60
 
     /// Top corner radius on the left side (matches notch curvature).
     private static let topCornerRadius: CGFloat = 6
@@ -114,14 +116,16 @@ enum NotchCallButton {
         hover.frame = rootView.bounds
         rootView.layer?.addSublayer(hover)
 
-        // Text label centered in the wing area.
-        let labelHeight: CGFloat = 16
+        // Icon centered in the wing's body. The bottom-left flare (bottomCornerRadius)
+        // visually pulls weight to the left, so we offset the icon rightward to balance.
+        let labelHeight: CGFloat = 18
         let labelY = (wingHeight - labelHeight) / 2
+        let iconLeftPadding: CGFloat = bottomCornerRadius + 6
         let label = makeLabel()
         label.frame = NSRect(
-            x: bottomCornerRadius,
+            x: iconLeftPadding,
             y: labelY,
-            width: wingWidth - bottomCornerRadius - 4,
+            width: wingWidth - iconLeftPadding - topCornerRadius,
             height: labelHeight
         )
         // Start with label invisible for fade-in.
@@ -285,7 +289,7 @@ enum NotchCallButton {
         }
     }
 
-    /// Begin a call — switch label to "Disconnect", show the timer wing, and start the voice session.
+    /// Begin a call — switch icon to red disconnect, show the timer wing, and start the voice session.
     private static func startCall() {
         logger.info("Call started")
         isInCall = true
@@ -297,7 +301,7 @@ enum NotchCallButton {
         session.start()
     }
 
-    /// End a call — revert label to "Call Tama", hide the timer wing, and stop the voice session.
+    /// End a call — revert icon to white phone, hide the timer wing, and stop the voice session.
     static func endCall() {
         logger.info("Call ended")
         isInCall = false
@@ -315,37 +319,10 @@ enum NotchCallButton {
         callSession = nil
     }
 
-    /// Update the label text and icon tint based on call state.
+    /// Update the icon and tint based on call state.
     private static func updateLabel(disconnect: Bool) {
         guard let labelField else { return }
-        let iconAttachment = NSTextAttachment()
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-        if let iconImage = NSImage(systemSymbolName: "phone.fill", accessibilityDescription: "Call")?
-            .withSymbolConfiguration(iconConfig)
-        {
-            iconAttachment.image = iconImage
-        }
-        let iconColor: NSColor = disconnect
-            ? NSColor.systemRed.withAlphaComponent(0.9)
-            : NSColor.white.withAlphaComponent(0.85)
-        let textColor: NSColor = disconnect
-            ? NSColor.white.withAlphaComponent(0.85)
-            : NSColor.white.withAlphaComponent(0.85)
-        let iconString = NSMutableAttributedString(attachment: iconAttachment)
-        iconString.addAttributes(
-            [.foregroundColor: iconColor],
-            range: NSRange(location: 0, length: iconString.length)
-        )
-        let text = disconnect ? " Disconnect" : " Call Tama"
-        let textString = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: textColor,
-            ]
-        )
-        iconString.append(textString)
-        labelField.attributedStringValue = iconString
+        labelField.attributedStringValue = makeIconString(disconnect: disconnect)
     }
 
     /// Show hover highlight.
@@ -516,31 +493,33 @@ enum NotchCallButton {
     // MARK: - Label
 
     private static func makeLabel() -> NSTextField {
+        let label = NSTextField(labelWithAttributedString: makeIconString(disconnect: false))
+        label.alignment = .center
+        return label
+    }
+
+    /// Build the attributed icon string. Idle: white phone. In-call: red disconnect.
+    private static func makeIconString(disconnect: Bool) -> NSAttributedString {
+        let symbolName = disconnect ? "phone.down.fill" : "phone.fill"
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
         let iconAttachment = NSTextAttachment()
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-        if let iconImage = NSImage(systemSymbolName: "phone.fill", accessibilityDescription: "Call")?
+        if let iconImage = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: disconnect ? "Disconnect" : "Call"
+        )?
             .withSymbolConfiguration(iconConfig)
         {
             iconAttachment.image = iconImage
         }
+        let iconColor: NSColor = disconnect
+            ? NSColor.systemRed
+            : NSColor.white.withAlphaComponent(0.9)
         let iconString = NSMutableAttributedString(attachment: iconAttachment)
         iconString.addAttributes(
-            [.foregroundColor: NSColor.white.withAlphaComponent(0.85)],
+            [.foregroundColor: iconColor],
             range: NSRange(location: 0, length: iconString.length)
         )
-
-        let textString = NSAttributedString(
-            string: " Call Tama",
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.85),
-            ]
-        )
-        iconString.append(textString)
-
-        let label = NSTextField(labelWithAttributedString: iconString)
-        label.alignment = .center
-        return label
+        return iconString
     }
 }
 
